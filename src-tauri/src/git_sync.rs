@@ -1,0 +1,208 @@
+use crate::error::{AppError, Result};
+use crate::{secrets, workspace};
+use serde::Serialize;
+use std::path::Path;
+use tokio::process::Command;
+
+/// Credential helper that reads the token from the environment, so it never
+/// touches disk or the process argument list.
+const CRED_HELPER: &str = "!f() { echo username=x-access-token; echo password=$PUGDOCK_GH_TOKEN; }; f";
+
+async fn run_git(root: &Path, args: &[&str]) -> Result<String> {
+    let token = secrets::get(secrets::GITHUB_TOKEN)?.unwrap_or_default();
+    let out = Command::new("git")
+        .arg("-c").arg(format!("credential.helper={CRED_HELPER}"))
+        .args(args)
+        .current_dir(root)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("PUGDOCK_GH_TOKEN", token)
+        .output()
+        .await
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound { AppError::GitMissing } else { e.into() }
+        })?;
+    let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+    if out.status.success() {
+        Ok(stdout)
+    } else if stderr.contains("Could not resolve host") || stderr.contains("unable to access") {
+        Err(AppError::Offline)
+    } else if stderr.contains("Authentication failed") || stderr.contains("403") {
+        Err(AppError::GithubAuthExpired)
+    } else {
+        Err(AppError::Other(format!("git {}: {}", args.first().unwrap_or(&""), stderr.trim())))
+    }
+}
+
+#[derive(Serialize)]
+pub struct SyncStatus {
+    pub dirty: bool,
+    pub ahead: u32,
+    pub behind: u32,
+    pub conflicts: Vec<String>,
+    pub merging: bool,
+}
+
+async fn status(root: &Path) -> Result<SyncStatus> {
+    let out = run_git(root, &["status", "--porcelain=v2", "--branch"]).await?;
+    let mut s = SyncStatus { dirty: false, ahead: 0, behind: 0, conflicts: vec![], merging: root.join(".git/MERGE_HEAD").exists() };
+    for line in out.lines() {
+        if let Some(ab) = line.strip_prefix("# branch.ab ") {
+            for part in ab.split(' ') {
+                if let Some(n) = part.strip_prefix('+') { s.ahead = n.parse().unwrap_or(0); }
+                if let Some(n) = part.strip_prefix('-') { s.behind = n.parse().unwrap_or(0); }
+            }
+        } else if line.starts_with('u') {
+            // unmerged entry: last field is the path
+            if let Some(p) = line.split(' ').nth(10) { s.conflicts.push(p.to_string()); }
+        } else if line.starts_with('1') || line.starts_with('2') || line.starts_with('?') {
+            s.dirty = true;
+        }
+    }
+    Ok(s)
+}
+
+// ---- Commands ----
+
+#[tauri::command]
+pub async fn git_init_workspace(
+    app: tauri::AppHandle,
+    remote_url: String,
+    user_name: String,
+    user_email: String,
+) -> Result<()> {
+    let root = workspace::workspace_root(&app)?;
+    if !root.join(".git").exists() {
+        run_git(&root, &["init", "-b", "main"]).await?;
+    }
+    run_git(&root, &["config", "user.name", &user_name]).await?;
+    run_git(&root, &["config", "user.email", &user_email]).await?;
+    // set-url if origin exists, add otherwise
+    if run_git(&root, &["remote", "set-url", "origin", &remote_url]).await.is_err() {
+        run_git(&root, &["remote", "add", "origin", &remote_url]).await?;
+    }
+    run_git(&root, &["add", "-A"]).await?;
+    let st = status(&root).await?;
+    if st.dirty {
+        run_git(&root, &["commit", "-m", "pugdock: initialize workspace"]).await?;
+    }
+    run_git(&root, &["push", "-u", "origin", "main"]).await?;
+    Ok(())
+}
+
+/// Commit all pending changes as a checkpoint. Returns true if a commit was made.
+#[tauri::command]
+pub async fn git_checkpoint(app: tauri::AppHandle, message: Option<String>) -> Result<bool> {
+    let root = workspace::workspace_root(&app)?;
+    let st = status(&root).await?;
+    if !st.conflicts.is_empty() {
+        return Err(AppError::SyncConflict);
+    }
+    if !st.dirty {
+        return Ok(false);
+    }
+    run_git(&root, &["add", "-A"]).await?;
+    let msg = message.unwrap_or_else(|| {
+        format!("pugdock: checkpoint {}", chrono::Local::now().format("%Y-%m-%d %H:%M"))
+    });
+    run_git(&root, &["commit", "-m", &msg]).await?;
+    Ok(true)
+}
+
+#[tauri::command]
+pub async fn git_push(app: tauri::AppHandle) -> Result<()> {
+    let root = workspace::workspace_root(&app)?;
+    run_git(&root, &["push", "origin", "main"]).await?;
+    Ok(())
+}
+
+/// Pull from GitHub. Returns the resulting status; if it contains conflicts,
+/// the merge is left in progress for the user to resolve file by file.
+#[tauri::command]
+pub async fn git_pull(app: tauri::AppHandle) -> Result<SyncStatus> {
+    let root = workspace::workspace_root(&app)?;
+    // Checkpoint local edits first so the merge never eats uncommitted work.
+    git_checkpoint(app.clone(), None).await?;
+    run_git(&root, &["fetch", "origin", "main"]).await?;
+    let st = status(&root).await?;
+    if st.behind > 0 {
+        let merge = run_git(&root, &["merge", "--no-edit", "origin/main"]).await;
+        if merge.is_err() {
+            let st = status(&root).await?;
+            if !st.conflicts.is_empty() {
+                return Ok(st); // needs review — UI resolves per file
+            }
+            merge?;
+        }
+    }
+    status(&root).await
+}
+
+/// Resolve one conflicted file, keeping either the local or the GitHub version.
+#[tauri::command]
+pub async fn git_resolve_conflict(app: tauri::AppHandle, path: String, keep: String) -> Result<SyncStatus> {
+    let root = workspace::workspace_root(&app)?;
+    let side = if keep == "local" { "--ours" } else { "--theirs" };
+    run_git(&root, &["checkout", side, "--", &path]).await?;
+    run_git(&root, &["add", "--", &path]).await?;
+    let st = status(&root).await?;
+    if st.conflicts.is_empty() && st.merging {
+        run_git(&root, &["commit", "--no-edit"]).await?;
+    }
+    status(&root).await
+}
+
+/// Both sides of a conflicted file, for the "Compare changes" view.
+#[tauri::command]
+pub async fn git_conflict_versions(app: tauri::AppHandle, path: String) -> Result<(String, String)> {
+    let root = workspace::workspace_root(&app)?;
+    let local = run_git(&root, &["show", &format!(":2:{path}")]).await.unwrap_or_default();
+    let remote = run_git(&root, &["show", &format!(":3:{path}")]).await.unwrap_or_default();
+    Ok((local, remote))
+}
+
+#[tauri::command]
+pub async fn git_status(app: tauri::AppHandle) -> Result<SyncStatus> {
+    let root = workspace::workspace_root(&app)?;
+    status(&root).await
+}
+
+#[derive(Serialize)]
+pub struct Checkpoint {
+    pub hash: String,
+    pub message: String,
+    pub date: String,
+}
+
+#[tauri::command]
+pub async fn git_history(app: tauri::AppHandle, path: Option<String>, limit: Option<u32>) -> Result<Vec<Checkpoint>> {
+    let root = workspace::workspace_root(&app)?;
+    let n = format!("-{}", limit.unwrap_or(50));
+    let mut args = vec!["log", &n, "--pretty=format:%h\x1f%s\x1f%ci"];
+    if let Some(p) = &path {
+        args.push("--");
+        args.push(p);
+    }
+    let out = match run_git(&root, &args).await {
+        Ok(o) => o,
+        Err(_) => return Ok(vec![]), // no commits yet
+    };
+    Ok(out
+        .lines()
+        .filter_map(|l| {
+            let mut f = l.split('\x1f');
+            Some(Checkpoint {
+                hash: f.next()?.into(),
+                message: f.next()?.into(),
+                date: f.next()?.into(),
+            })
+        })
+        .collect())
+}
+
+/// File content at a given checkpoint, for version history preview.
+#[tauri::command]
+pub async fn git_file_at(app: tauri::AppHandle, hash: String, path: String) -> Result<String> {
+    let root = workspace::workspace_root(&app)?;
+    run_git(&root, &["show", &format!("{hash}:{path}")]).await
+}
