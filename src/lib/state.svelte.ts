@@ -1,0 +1,122 @@
+import { api, type AppConfig, type Settings, type TreeEntry, type SyncStatus } from "./api";
+
+export type SyncUiState =
+  | "saved"
+  | "saving"
+  | "saved-locally"
+  | "checkpointing"
+  | "syncing"
+  | "synced"
+  | "offline"
+  | "needs-review";
+
+export interface Tab {
+  path: string;
+  name: string;
+  kind: "text" | "pdf" | "image";
+  content: string; // text content, or base64 for pdf/image
+  dirty: boolean;
+}
+
+export const DEFAULT_SETTINGS: Required<Pick<
+  Settings,
+  | "syncMode" | "checkpointSeconds" | "pushSeconds" | "pullOnStartup" | "pushOnExit"
+  | "aiEnabled" | "modelMode" | "askBeforeSendingCode" | "askBeforeSendingPdfs"
+  | "aiExcluded" | "autoCheckUpdates" | "includePrereleases"
+>> = {
+  syncMode: "smart",
+  checkpointSeconds: 60,
+  pushSeconds: 240,
+  pullOnStartup: true,
+  pushOnExit: true,
+  aiEnabled: false,
+  modelMode: "auto",
+  askBeforeSendingCode: false,
+  askBeforeSendingPdfs: true,
+  aiExcluded: [],
+  autoCheckUpdates: true,
+  includePrereleases: false,
+};
+
+export const app = $state({
+  loaded: false,
+  config: null as AppConfig | null,
+  tree: [] as TreeEntry[],
+  tabs: [] as Tab[],
+  activePath: null as string | null,
+  syncState: "synced" as SyncUiState,
+  pendingChanges: 0,
+  conflicts: [] as string[],
+  panel: null as null | "search" | "settings" | "ai" | "history",
+  toast: null as string | null,
+});
+
+export function settings(): Settings & typeof DEFAULT_SETTINGS {
+  return { ...DEFAULT_SETTINGS, ...(app.config?.settings ?? {}) };
+}
+
+export async function saveSettings(patch: Partial<Settings>) {
+  if (!app.config) return;
+  app.config.settings = { ...app.config.settings, ...patch };
+  await api.setConfig($state.snapshot(app.config) as AppConfig);
+}
+
+export async function refreshTree() {
+  app.tree = await api.listTree();
+}
+
+export function toast(msg: string) {
+  app.toast = msg;
+  setTimeout(() => (app.toast = null), 4000);
+}
+
+export function applyStatus(st: SyncStatus) {
+  app.conflicts = st.conflicts;
+  if (st.conflicts.length > 0) {
+    app.syncState = "needs-review";
+  } else if (st.dirty || st.ahead > 0) {
+    app.pendingChanges = st.ahead;
+    app.syncState = "saved-locally";
+  } else {
+    app.syncState = "synced";
+  }
+}
+
+const TEXT_EXTS = new Set([
+  "md", "txt", "json", "yaml", "yml", "toml", "py", "js", "ts", "tsx", "jsx", "go",
+  "rs", "java", "cs", "sql", "html", "css", "log", "csv", "sh", "fish", "example", "env",
+  "xml", "ini", "conf", "cfg", "gitignore",
+]);
+
+export function fileKind(path: string): Tab["kind"] {
+  const ext = path.split(".").pop()?.toLowerCase() ?? "";
+  if (ext === "pdf") return "pdf";
+  if (["png", "jpg", "jpeg", "gif", "webp", "svg"].includes(ext)) return "image";
+  return "text";
+}
+
+export function isTextFile(path: string): boolean {
+  const ext = path.split(".").pop()?.toLowerCase() ?? "";
+  return TEXT_EXTS.has(ext) || !path.includes(".");
+}
+
+export async function openFile(path: string) {
+  const existing = app.tabs.find((t) => t.path === path);
+  if (existing) {
+    app.activePath = path;
+    return;
+  }
+  const kind = fileKind(path);
+  const content = kind === "text" ? await api.readFile(path) : await api.readFileBase64(path);
+  app.tabs.push({ path, name: path.split("/").pop() ?? path, kind, content, dirty: false });
+  app.activePath = path;
+}
+
+export function closeTab(path: string) {
+  const i = app.tabs.findIndex((t) => t.path === path);
+  if (i === -1) return;
+  app.tabs.splice(i, 1);
+  if (app.activePath === path) {
+    app.activePath = app.tabs[Math.min(i, app.tabs.length - 1)]?.path ?? null;
+  }
+}

@@ -1,0 +1,545 @@
+<script lang="ts">
+  import { api, errorMessage, type TreeEntry, type UpdateInfo } from "$lib/api";
+  import { app, openFile, closeTab, refreshTree, settings, toast } from "$lib/state.svelte";
+  import { syncNow, startSync, pushOnExit, flushSaves } from "$lib/sync";
+  import FileTree from "./FileTree.svelte";
+  import CodeEditor from "./CodeEditor.svelte";
+  import PdfViewer from "./PdfViewer.svelte";
+  import SearchPanel from "./SearchPanel.svelte";
+  import SettingsPanel from "./SettingsPanel.svelte";
+  import AiPanel from "./AiPanel.svelte";
+  import HistoryPanel from "./HistoryPanel.svelte";
+  import ConflictDialog from "./ConflictDialog.svelte";
+  import { getCurrentWebview } from "@tauri-apps/api/webview";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { openUrl } from "@tauri-apps/plugin-opener";
+
+  const activeTab = $derived(app.tabs.find((t) => t.path === app.activePath));
+
+  const SYNC_LABEL: Record<string, string> = {
+    saved: "Saved",
+    saving: "Saving…",
+    "saved-locally": "Saved locally",
+    checkpointing: "Creating checkpoint…",
+    syncing: "Syncing…",
+    synced: "Synced",
+    offline: "Offline — will sync later",
+    "needs-review": "Needs review",
+  };
+
+  // --- context menu ---
+  let menu = $state<{ x: number; y: number; entry: TreeEntry | null } | null>(null);
+  // --- inline prompt modal ---
+  let modal = $state<{ title: string; value: string; onOk: (v: string) => void } | null>(null);
+  let updateInfo = $state<UpdateInfo | null>(null);
+
+  function showMenu(e: MouseEvent, entry: TreeEntry | null) {
+    menu = { x: e.clientX, y: e.clientY, entry };
+  }
+
+  function ask(title: string, initial: string, onOk: (v: string) => void) {
+    modal = { title, value: initial, onOk };
+  }
+
+  function dirOf(entry: TreeEntry | null): string {
+    if (!entry) return "";
+    return entry.is_dir ? entry.path : entry.path.split("/").slice(0, -1).join("/");
+  }
+
+  async function run(fn: () => Promise<void>) {
+    try {
+      await fn();
+      await refreshTree();
+    } catch (e) {
+      toast(errorMessage(e));
+    }
+  }
+
+  const menuActions = {
+    newFile: (entry: TreeEntry | null) =>
+      ask("New file", dirOf(entry) ? dirOf(entry) + "/" : "notes/", (v) =>
+        run(async () => {
+          await api.writeFile(v, "");
+          await openFile(v);
+        }),
+      ),
+    newFolder: (entry: TreeEntry | null) =>
+      ask("New folder", dirOf(entry) ? dirOf(entry) + "/" : "", (v) => run(() => api.createFolder(v))),
+    rename: (entry: TreeEntry) =>
+      ask("Rename / move", entry.path, (v) =>
+        run(async () => {
+          await api.renamePath(entry.path, v);
+          const tab = app.tabs.find((t) => t.path === entry.path);
+          if (tab) {
+            tab.path = v;
+            tab.name = v.split("/").pop() ?? v;
+          }
+          if (app.activePath === entry.path) app.activePath = v;
+          api.removeFromIndex(entry.path).catch(() => {});
+          api.indexFile(v).catch(() => {});
+        }),
+      ),
+    duplicate: (entry: TreeEntry) => run(async () => void (await api.duplicateFile(entry.path))),
+    del: (entry: TreeEntry) => {
+      if (!confirm(`Delete "${entry.path}"? A copy stays in checkpoint history.`)) return;
+      run(async () => {
+        await api.deletePath(entry.path);
+        closeTab(entry.path);
+        api.removeFromIndex(entry.path).catch(() => {});
+      });
+    },
+    reveal: (entry: TreeEntry) => api.reveal(entry.path),
+  };
+
+  // Drag & drop files from the OS into the workspace.
+  $effect(() => {
+    const unlisten = getCurrentWebview().onDragDropEvent(async (event) => {
+      if (event.payload.type !== "drop") return;
+      for (const src of event.payload.paths) {
+        const name = src.split(/[/\\]/).pop() ?? "file";
+        const folder = name.toLowerCase().endsWith(".pdf") ? "pdfs" : "inbox";
+        await api.importFile(src, `${folder}/${name}`).catch((e) => toast(errorMessage(e)));
+        api.indexFile(`${folder}/${name}`).catch(() => {});
+      }
+      await refreshTree();
+      toast("Imported into workspace");
+    });
+    return () => void unlisten.then((u) => u());
+  });
+
+  // Push on exit.
+  $effect(() => {
+    const unlisten = getCurrentWindow().onCloseRequested(async () => {
+      await pushOnExit();
+    });
+    return () => void unlisten.then((u) => u());
+  });
+
+  // Startup: pull, index, schedulers, update check.
+  $effect(() => {
+    (async () => {
+      startSync();
+      if (settings().pullOnStartup) await syncNow().catch(() => {});
+      api.rebuildIndex().catch(() => {});
+      if (settings().autoCheckUpdates) {
+        updateInfo = await api.checkUpdates(settings().includePrereleases).catch(() => null);
+      }
+    })();
+  });
+
+  function onKeydown(e: KeyboardEvent) {
+    const mod = e.metaKey || e.ctrlKey;
+    if (mod && e.key === "p") {
+      e.preventDefault();
+      app.panel = app.panel === "search" ? null : "search";
+    } else if (mod && e.key === "s") {
+      e.preventDefault();
+      flushSaves();
+    } else if (mod && e.key === "w" && app.activePath) {
+      e.preventDefault();
+      closeTab(app.activePath);
+    }
+  }
+</script>
+
+<svelte:window onkeydown={onKeydown} onclick={() => (menu = null)} />
+
+<div class="workspace">
+  <header>
+    <span class="brand">🐾 {app.config?.repo_name ?? "PugDock"}</span>
+    <button class="ghost" onclick={() => (app.panel = app.panel === "search" ? null : "search")}>
+      Search <kbd>⌘P</kbd>
+    </button>
+    <div class="spacer"></div>
+    <button
+      class="ghost sync"
+      class:warn={app.syncState === "offline" || app.syncState === "needs-review"}
+      onclick={() => syncNow().catch((e) => toast(errorMessage(e)))}
+      title="Sync now"
+    >
+      {SYNC_LABEL[app.syncState]}{app.syncState === "offline" && app.pendingChanges
+        ? ` — ${app.pendingChanges} change${app.pendingChanges > 1 ? "s" : ""} waiting`
+        : ""}
+    </button>
+    <button class="ghost" onclick={() => (app.panel = app.panel === "history" ? null : "history")}>History</button>
+    <button class="ghost" onclick={() => (app.panel = app.panel === "ai" ? null : "ai")}>AI</button>
+    <button class="ghost" onclick={() => (app.panel = app.panel === "settings" ? null : "settings")}>⚙</button>
+  </header>
+
+  <div class="body">
+    <aside oncontextmenu={(e) => { e.preventDefault(); showMenu(e, null); }}>
+      <div class="aside-head">
+        <span>Files</span>
+        <button class="ghost" title="New file" onclick={() => menuActions.newFile(null)}>＋</button>
+      </div>
+      <div class="tree">
+        <FileTree entries={app.tree} onmenu={showMenu} />
+      </div>
+    </aside>
+
+    <main>
+      {#if app.tabs.length}
+        <div class="tabs">
+          {#each app.tabs as tab (tab.path)}
+            <div class="tab" class:active={tab.path === app.activePath}>
+              <button class="tab-name" onclick={() => (app.activePath = tab.path)}>
+                {tab.dirty ? "● " : ""}{tab.name}
+              </button>
+              <button class="tab-close" onclick={() => closeTab(tab.path)}>×</button>
+            </div>
+          {/each}
+        </div>
+      {/if}
+      <div class="content">
+        {#if activeTab}
+          {#key activeTab.path}
+            {#if activeTab.kind === "text"}
+              <CodeEditor tab={activeTab} />
+            {:else if activeTab.kind === "pdf"}
+              <PdfViewer tab={activeTab} />
+            {:else}
+              <div class="img-wrap">
+                <img src={`data:image;base64,${activeTab.content}`} alt={activeTab.name} />
+              </div>
+            {/if}
+          {/key}
+        {:else}
+          <div class="empty">
+            <p>🐾</p>
+            <p>Open a file, drop one here, or press <kbd>⌘P</kbd> to search.</p>
+          </div>
+        {/if}
+      </div>
+    </main>
+
+    {#if app.panel}
+      <section class="side-panel">
+        <div class="panel-head">
+          <span>{app.panel === "ai" ? "Ask PugDock" : app.panel[0].toUpperCase() + app.panel.slice(1)}</span>
+          <button class="ghost" onclick={() => (app.panel = null)}>×</button>
+        </div>
+        {#if app.panel === "search"}<SearchPanel />
+        {:else if app.panel === "settings"}<SettingsPanel />
+        {:else if app.panel === "ai"}<AiPanel />
+        {:else if app.panel === "history"}<HistoryPanel />{/if}
+      </section>
+    {/if}
+  </div>
+</div>
+
+{#if menu}
+  <div class="ctx" style="left:{menu.x}px; top:{menu.y}px">
+    <button onclick={() => menu && menuActions.newFile(menu.entry)}>New file</button>
+    <button onclick={() => menu && menuActions.newFolder(menu.entry)}>New folder</button>
+    {#if menu.entry}
+      {@const entry = menu.entry}
+      <hr />
+      <button onclick={() => menuActions.rename(entry)}>Rename / move</button>
+      {#if !entry.is_dir}
+        <button onclick={() => menuActions.duplicate(entry)}>Duplicate</button>
+      {/if}
+      <button onclick={() => menuActions.reveal(entry)}>Reveal in file manager</button>
+      <hr />
+      <button class="danger" onclick={() => menuActions.del(entry)}>Delete</button>
+    {/if}
+  </div>
+{/if}
+
+{#if modal}
+  <div class="overlay" role="presentation" onclick={() => (modal = null)}>
+    <form
+      class="modal"
+      role="presentation"
+      onclick={(e) => e.stopPropagation()}
+      onsubmit={(e) => {
+        e.preventDefault();
+        const m = modal;
+        modal = null;
+        if (m && m.value.trim()) m.onOk(m.value.trim());
+      }}
+    >
+      <h4>{modal.title}</h4>
+      <!-- svelte-ignore a11y_autofocus -->
+      <input bind:value={modal.value} autofocus spellcheck="false" />
+      <div class="btns">
+        <button type="button" onclick={() => (modal = null)}>Cancel</button>
+        <button type="submit" class="primary">OK</button>
+      </div>
+    </form>
+  </div>
+{/if}
+
+{#if updateInfo}
+  <div class="overlay" role="presentation" onclick={() => (updateInfo = null)}>
+    <div class="modal" role="presentation" onclick={(e) => e.stopPropagation()}>
+      <h4>A new version of PugDock is available.</h4>
+      <p class="dim">Current: v{updateInfo.current} · Latest: {updateInfo.latest}</p>
+      {#if updateInfo.notes}<pre class="notes">{updateInfo.notes.slice(0, 2000)}</pre>{/if}
+      <div class="btns">
+        <button onclick={() => (updateInfo = null)}>Later</button>
+        <button
+          class="primary"
+          onclick={() => {
+            if (updateInfo) openUrl(updateInfo.url);
+            updateInfo = null;
+          }}
+        >
+          View release
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+{#if app.conflicts.length}
+  <ConflictDialog />
+{/if}
+
+{#if app.toast}
+  <div class="toast">{app.toast}</div>
+{/if}
+
+<style>
+  .workspace {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-panel);
+  }
+  .brand {
+    font-weight: 600;
+    margin-right: 8px;
+  }
+  .spacer {
+    flex: 1;
+  }
+  .sync {
+    font-size: 12px;
+  }
+  .sync.warn {
+    color: var(--warn);
+  }
+  kbd {
+    font-size: 10px;
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 0 4px;
+  }
+  .body {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+  }
+  aside {
+    width: 220px;
+    flex-shrink: 0;
+    border-right: 1px solid var(--border);
+    background: var(--bg-panel);
+    display: flex;
+    flex-direction: column;
+  }
+  .aside-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px 4px;
+    color: var(--text-dim);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+  }
+  .tree {
+    flex: 1;
+    overflow-y: auto;
+    padding-bottom: 20px;
+  }
+  main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .tabs {
+    display: flex;
+    overflow-x: auto;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-panel);
+  }
+  .tab {
+    display: flex;
+    align-items: center;
+    border-right: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .tab.active {
+    background: var(--bg);
+  }
+  .tab-name {
+    background: none;
+    border: none;
+    padding: 7px 4px 7px 12px;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+  .tab.active .tab-name {
+    color: var(--text);
+  }
+  .tab-close {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    padding: 4px 8px 4px 2px;
+  }
+  .tab-close:hover {
+    color: var(--danger);
+  }
+  .content {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .content > :global(*) {
+    flex: 1;
+    min-height: 0;
+  }
+  .empty {
+    display: grid;
+    place-content: center;
+    text-align: center;
+    color: var(--text-dim);
+    height: 100%;
+  }
+  .empty p:first-child {
+    font-size: 40px;
+    margin: 0;
+  }
+  .img-wrap {
+    display: grid;
+    place-items: center;
+    overflow: auto;
+    height: 100%;
+  }
+  .img-wrap img {
+    max-width: 90%;
+    max-height: 90%;
+  }
+  .side-panel {
+    width: 340px;
+    flex-shrink: 0;
+    border-left: 1px solid var(--border);
+    background: var(--bg-panel);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .panel-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 8px 4px 14px;
+    color: var(--text-dim);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+  }
+  .side-panel > :global(:last-child) {
+    flex: 1;
+    min-height: 0;
+  }
+  .ctx {
+    position: fixed;
+    z-index: 200;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    min-width: 180px;
+    padding: 4px;
+  }
+  .ctx button {
+    background: none;
+    border: none;
+    text-align: left;
+    padding: 6px 10px;
+    font-size: 12.5px;
+    border-radius: 4px;
+  }
+  .ctx button:hover {
+    background: var(--bg-hover);
+  }
+  .ctx button.danger {
+    color: var(--danger);
+  }
+  .ctx hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 4px 0;
+  }
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: grid;
+    place-items: center;
+    z-index: 150;
+  }
+  .modal {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px;
+    width: 440px;
+    max-width: 90vw;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .modal h4 {
+    margin: 0;
+    font-size: 14px;
+  }
+  .modal .btns {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .notes {
+    max-height: 200px;
+    overflow: auto;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 8px;
+    font-size: 11px;
+    white-space: pre-wrap;
+  }
+  .dim {
+    color: var(--text-dim);
+    margin: 0;
+  }
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg-active);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-size: 12.5px;
+    z-index: 300;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  }
+</style>
