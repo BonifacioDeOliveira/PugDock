@@ -126,6 +126,9 @@ pub async fn anthropic_auth_status() -> Result<String> {
 /// via Homebrew when it's missing. No-op if already installed.
 #[tauri::command]
 pub async fn anthropic_install_cli() -> Result<()> {
+    // Serialize concurrent calls (UI pre-warm + user click) — brew can't run twice.
+    static LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    let _guard = LOCK.lock().await;
     if ant_path().is_some() {
         return Ok(());
     }

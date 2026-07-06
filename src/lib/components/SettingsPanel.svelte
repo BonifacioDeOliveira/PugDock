@@ -23,6 +23,10 @@
       anthropicAuth = s;
       if (s === "key" || s === "oauth") {
         api.anthropicModels().then((m) => (models = m)).catch(() => {});
+      } else if (s === "none") {
+        // Pre-warm the one-time CLI setup so the sign-in click goes straight
+        // to the browser instead of waiting on the install.
+        api.anthropicInstallCli().then(() => (anthropicAuth = "ant")).catch(() => {});
       }
     });
     refreshImportedThemes();

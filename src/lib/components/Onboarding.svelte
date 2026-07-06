@@ -199,7 +199,15 @@
   let anthropicAuth = $state<"key" | "oauth" | "ant" | "none">("none");
 
   $effect(() => {
-    if (step === 4) api.anthropicAuthStatus().then((s) => (anthropicAuth = s));
+    if (step === 4) {
+      api.anthropicAuthStatus().then((s) => {
+        anthropicAuth = s;
+        if (s === "none") {
+          // Pre-warm the one-time CLI setup while the user reads the screen.
+          api.anthropicInstallCli().then(() => (anthropicAuth = "ant")).catch(() => {});
+        }
+      });
+    }
   });
 
   async function anthropicOauth() {
