@@ -7,10 +7,19 @@ export interface AppError {
   message: string;
 }
 
+export interface WorkspaceEntry {
+  path: string;
+  name: string;
+  repo_owner: string | null;
+  repo_name: string | null;
+  managed: boolean;
+}
+
 export interface AppConfig {
   workspace_path: string | null;
   repo_owner: string | null;
   repo_name: string | null;
+  workspaces: WorkspaceEntry[];
   onboarding_done: boolean;
   settings: Settings;
 }
@@ -133,6 +142,10 @@ export const api = {
   setConfig: (config: AppConfig) => invoke<void>("set_app_config", { config }),
   inspectFolder: (path: string) => invoke<FolderInspection>("inspect_folder", { path }),
   createWorkspace: (path: string) => invoke<void>("create_workspace", { path }),
+  addWorkspace: (path: string, managed: boolean) =>
+    invoke<AppConfig>("add_workspace", { path, managed }),
+  setActiveWorkspace: (path: string) => invoke<AppConfig>("set_active_workspace", { path }),
+  removeWorkspace: (path: string) => invoke<AppConfig>("remove_workspace", { path }),
   listTree: () => invoke<TreeEntry[]>("list_tree"),
   readFile: (path: string) => invoke<string>("read_file", { path }),
   readFileBase64: (path: string) => invoke<string>("read_file_base64", { path }),

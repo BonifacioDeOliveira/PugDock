@@ -60,7 +60,22 @@ export function settings(): Settings & typeof DEFAULT_SETTINGS {
 
 /** GitHub sync is optional — enabled only when a repo was linked. */
 export function syncEnabled(): boolean {
-  return !!app.config?.repo_name;
+  return !!app.config?.repo_name && workspaceManaged();
+}
+
+/** true for PugDock workspaces; false for opened folders (code-editor mode),
+ *  where PugDock must never run git or scaffold anything. */
+export function workspaceManaged(): boolean {
+  const path = app.config?.workspace_path;
+  if (!path) return true;
+  return app.config?.workspaces?.find((w) => w.path === path)?.managed ?? true;
+}
+
+/** Stable, distinct-looking color per string (workspace path, file path…). */
+export function colorFor(s: string): string {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return `hsl(${h % 360} 62% 58%)`;
 }
 
 export async function saveSettings(patch: Partial<Settings>) {

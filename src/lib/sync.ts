@@ -1,5 +1,5 @@
 import { api, errorCode } from "./api";
-import { app, applyStatus, settings, syncEnabled } from "./state.svelte";
+import { app, applyStatus, settings, syncEnabled, workspaceManaged } from "./state.svelte";
 
 // Debounced local save → idle checkpoint → periodic push.
 // The user never waits on the network to type or save.
@@ -45,6 +45,8 @@ export async function flushSaves() {
 }
 
 function scheduleCheckpoint() {
+  // Opened folders (code-editor mode): never run git on someone else's repo.
+  if (!workspaceManaged()) return;
   if (settings().syncMode === "manual") return;
   if (checkpointTimer) clearTimeout(checkpointTimer);
   checkpointTimer = setTimeout(checkpoint, settings().checkpointSeconds * 1000);
@@ -65,9 +67,9 @@ async function checkpoint() {
 /** Full sync: checkpoint pending edits, pull, then push. */
 export async function syncNow() {
   if (!syncEnabled()) {
-    // Local-only mode: checkpoint for history, nothing to push.
+    // Local-only mode: checkpoint for history (managed only), nothing to push.
     await flushSaves();
-    await api.gitCheckpoint().catch(() => {});
+    if (workspaceManaged()) await api.gitCheckpoint().catch(() => {});
     app.syncState = "saved";
     return;
   }
@@ -113,6 +115,7 @@ export function startSync() {
 
 export async function pushOnExit() {
   await flushSaves().catch(() => {});
+  if (!workspaceManaged()) return;
   await api.gitCheckpoint().catch(() => {});
   if (syncEnabled() && settings().pushOnExit) {
     await api.gitPush().catch(() => {});

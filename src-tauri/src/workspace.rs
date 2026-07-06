@@ -51,16 +51,59 @@ desktop workspace for developers. Files here are synced automatically from the a
 - `context/` — AI-generated context files
 ";
 
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct WorkspaceEntry {
+    pub path: String,
+    pub name: String,
+    pub repo_owner: Option<String>,
+    pub repo_name: Option<String>,
+    /// true = PugDock-managed (scaffold, checkpoints, sync).
+    /// false = an opened folder — PugDock never touches its git or structure.
+    pub managed: bool,
+}
+
 /// App-level config, stored in the OS app-config dir (never in the workspace repo).
+/// The legacy top-level fields (`workspace_path`, `repo_owner`, `repo_name`)
+/// always mirror the ACTIVE workspace so existing frontend code keeps working.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppConfig {
     pub workspace_path: Option<String>,
     pub repo_owner: Option<String>,
     pub repo_name: Option<String>,
+    pub workspaces: Vec<WorkspaceEntry>,
     pub onboarding_done: bool,
     /// Free-form UI settings owned by the frontend (sync intervals, AI prefs, …).
     pub settings: serde_json::Value,
+}
+
+impl AppConfig {
+    /// Migrate single-workspace configs and keep mirror fields consistent.
+    fn normalize(&mut self) {
+        if self.workspaces.is_empty() {
+            if let Some(path) = &self.workspace_path {
+                self.workspaces.push(WorkspaceEntry {
+                    path: path.clone(),
+                    name: self
+                        .repo_name
+                        .clone()
+                        .or_else(|| Path::new(path).file_name().map(|n| n.to_string_lossy().to_string()))
+                        .unwrap_or_else(|| "Workspace".into()),
+                    repo_owner: self.repo_owner.clone(),
+                    repo_name: self.repo_name.clone(),
+                    managed: true,
+                });
+            }
+        }
+        // Push legacy (active-workspace) fields into the matching entry.
+        if let Some(path) = self.workspace_path.clone() {
+            if let Some(entry) = self.workspaces.iter_mut().find(|w| w.path == path) {
+                entry.repo_owner = self.repo_owner.clone();
+                entry.repo_name = self.repo_name.clone();
+            }
+        }
+    }
 }
 
 fn config_file(app: &tauri::AppHandle) -> Result<PathBuf> {
@@ -74,15 +117,19 @@ fn config_file(app: &tauri::AppHandle) -> Result<PathBuf> {
 
 pub fn load_config(app: &tauri::AppHandle) -> Result<AppConfig> {
     let path = config_file(app)?;
-    match fs::read_to_string(&path) {
-        Ok(s) => Ok(serde_json::from_str(&s).unwrap_or_default()),
-        Err(_) => Ok(AppConfig::default()),
-    }
+    let mut cfg: AppConfig = match fs::read_to_string(&path) {
+        Ok(s) => serde_json::from_str(&s).unwrap_or_default(),
+        Err(_) => AppConfig::default(),
+    };
+    cfg.normalize();
+    Ok(cfg)
 }
 
 pub fn save_config(app: &tauri::AppHandle, cfg: &AppConfig) -> Result<()> {
+    let mut cfg = cfg.clone();
+    cfg.normalize();
     let path = config_file(app)?;
-    fs::write(path, serde_json::to_string_pretty(cfg).unwrap())?;
+    fs::write(path, serde_json::to_string_pretty(&cfg).unwrap())?;
     Ok(())
 }
 
@@ -111,12 +158,19 @@ pub struct TreeEntry {
     pub children: Option<Vec<TreeEntry>>,
 }
 
+/// Heavy build/dependency dirs — skipped in the tree and the search index so
+/// opened code folders stay fast.
+pub const SKIP_DIRS: &[&str] = &[
+    "node_modules", "target", "dist", "build", ".next", ".nuxt", "__pycache__",
+    ".venv", "venv", ".gradle", "Pods", "DerivedData", "vendor", ".svelte-kit",
+];
+
 fn read_tree(dir: &Path, root: &Path) -> Result<Vec<TreeEntry>> {
     let mut entries: Vec<TreeEntry> = Vec::new();
     for e in fs::read_dir(dir)? {
         let e = e?;
         let name = e.file_name().to_string_lossy().to_string();
-        if name == ".git" || name == ".pugdock" || name == ".DS_Store" {
+        if name == ".git" || name == ".pugdock" || name == ".DS_Store" || SKIP_DIRS.contains(&name.as_str()) {
             continue;
         }
         let path = e.path();
@@ -187,8 +241,74 @@ pub fn create_workspace(app: tauri::AppHandle, path: String) -> Result<()> {
     let p = PathBuf::from(&path);
     scaffold(&p)?;
     let mut cfg = load_config(&app)?;
+    let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "Workspace".into());
+    if !cfg.workspaces.iter().any(|w| w.path == path) {
+        cfg.workspaces.push(WorkspaceEntry {
+            path: path.clone(),
+            name,
+            repo_owner: None,
+            repo_name: None,
+            managed: true,
+        });
+    }
     cfg.workspace_path = Some(path);
+    cfg.repo_owner = None;
+    cfg.repo_name = None;
     save_config(&app, &cfg)
+}
+
+/// Add a workspace tab: `managed = true` scaffolds a new PugDock workspace;
+/// `managed = false` opens an existing folder untouched (code-editor mode).
+#[tauri::command]
+pub fn add_workspace(app: tauri::AppHandle, path: String, managed: bool) -> Result<AppConfig> {
+    let p = PathBuf::from(&path);
+    if managed {
+        scaffold(&p)?;
+    } else if !p.is_dir() {
+        return Err(AppError::Other("Folder not found.".into()));
+    }
+    let mut cfg = load_config(&app)?;
+    if !cfg.workspaces.iter().any(|w| w.path == path) {
+        let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "Folder".into());
+        cfg.workspaces.push(WorkspaceEntry { path: path.clone(), name, repo_owner: None, repo_name: None, managed });
+    }
+    set_active(&mut cfg, &path);
+    save_config(&app, &cfg)?;
+    load_config(&app)
+}
+
+fn set_active(cfg: &mut AppConfig, path: &str) {
+    if let Some(entry) = cfg.workspaces.iter().find(|w| w.path == path) {
+        cfg.workspace_path = Some(entry.path.clone());
+        cfg.repo_owner = entry.repo_owner.clone();
+        cfg.repo_name = entry.repo_name.clone();
+    }
+}
+
+#[tauri::command]
+pub fn set_active_workspace(app: tauri::AppHandle, path: String) -> Result<AppConfig> {
+    let mut cfg = load_config(&app)?;
+    set_active(&mut cfg, &path);
+    save_config(&app, &cfg)?;
+    load_config(&app)
+}
+
+/// Remove a workspace tab from the list — never deletes any files.
+#[tauri::command]
+pub fn remove_workspace(app: tauri::AppHandle, path: String) -> Result<AppConfig> {
+    let mut cfg = load_config(&app)?;
+    cfg.workspaces.retain(|w| w.path != path);
+    if cfg.workspace_path.as_deref() == Some(path.as_str()) {
+        let next = cfg.workspaces.first().map(|w| w.path.clone());
+        cfg.workspace_path = None;
+        cfg.repo_owner = None;
+        cfg.repo_name = None;
+        if let Some(n) = next {
+            set_active(&mut cfg, &n);
+        }
+    }
+    save_config(&app, &cfg)?;
+    load_config(&app)
 }
 
 #[tauri::command]

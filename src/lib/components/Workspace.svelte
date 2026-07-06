@@ -1,6 +1,8 @@
 <script lang="ts">
   import { api, errorMessage, type TreeEntry, type UpdateInfo } from "$lib/api";
-  import { app, openFile, openToSide, closeTab, refreshTree, settings, syncEnabled, toast, type Tab } from "$lib/state.svelte";
+  import { app, openFile, openToSide, closeTab, refreshTree, settings, syncEnabled, workspaceManaged, colorFor, toast, type Tab } from "$lib/state.svelte";
+  import { switchWorkspace, addWorkspace, closeWorkspace } from "$lib/workspaces";
+  import { open as openDialog } from "@tauri-apps/plugin-dialog";
   import MarkdownView from "./MarkdownView.svelte";
   import { syncNow, startSync, pushOnExit, flushSaves } from "$lib/sync";
   import FileTree from "./FileTree.svelte";
@@ -31,6 +33,36 @@
 
   // --- context menu ---
   let menu = $state<{ x: number; y: number; entry: TreeEntry | null } | null>(null);
+  let wsMenu = $state(false);
+
+  async function pickAndAdd(managed: boolean) {
+    wsMenu = false;
+    const picked = await openDialog({
+      directory: true,
+      title: managed ? "Choose a folder for the new workspace" : "Open folder",
+    });
+    if (typeof picked === "string") {
+      await addWorkspace(picked, managed).catch((e) => toast(errorMessage(e)));
+    }
+  }
+
+  function treeHas(path: string, entries = app.tree): boolean {
+    return entries.some((e) => e.path === path || (e.children ? treeHas(path, e.children) : false));
+  }
+
+  /** Big "New note" button: create instantly, open, let the user rename later. */
+  async function quickNote() {
+    const dir = workspaceManaged() ? "notes/" : "";
+    for (let i = 1; i < 1000; i++) {
+      const path = `${dir}untitled${i === 1 ? "" : `-${i}`}.md`;
+      if (!treeHas(path)) {
+        await api.writeFile(path, "");
+        await refreshTree();
+        await openFile(path);
+        return;
+      }
+    }
+  }
   // --- inline prompt modal ---
   let modal = $state<{ title: string; value: string; onOk: (v: string) => void } | null>(null);
   let updateInfo = $state<UpdateInfo | null>(null);
@@ -148,11 +180,40 @@
   }
 </script>
 
-<svelte:window onkeydown={onKeydown} onclick={() => (menu = null)} />
+<svelte:window onkeydown={onKeydown} onclick={() => { menu = null; wsMenu = false; }} />
 
 <div class="workspace">
   <header>
-    <span class="brand">🐾 {app.config?.repo_name ?? "PugDock"}</span>
+    <span class="brand">🐾</span>
+    <div class="ws-tabs">
+      {#each app.config?.workspaces ?? [] as ws (ws.path)}
+        {@const active = ws.path === app.config?.workspace_path}
+        {@const color = colorFor(ws.path)}
+        <div
+          class="ws-tab"
+          class:active
+          style="--ws-color: {color}"
+        >
+          <button class="ws-name" onclick={() => switchWorkspace(ws.path).catch((e) => toast(errorMessage(e)))}>
+            <span class="ws-dot"></span>{ws.name}{ws.managed ? "" : " 📂"}
+          </button>
+          {#if active && (app.config?.workspaces.length ?? 0) > 1}
+            <button
+              class="ws-close"
+              title="Close workspace (files stay on disk)"
+              onclick={() => closeWorkspace(ws.path).catch((e) => toast(errorMessage(e)))}
+            >×</button>
+          {/if}
+        </div>
+      {/each}
+      <button class="ghost ws-add" title="New workspace / open folder" onclick={(e) => { e.stopPropagation(); wsMenu = !wsMenu; }}>＋</button>
+      {#if wsMenu}
+        <div class="ctx ws-menu">
+          <button onclick={() => pickAndAdd(true)}>New workspace…</button>
+          <button onclick={() => pickAndAdd(false)}>Open folder…</button>
+        </div>
+      {/if}
+    </div>
     <button class="ghost" onclick={() => (app.panel = app.panel === "search" ? null : "search")}>
       Search <kbd>⌘P</kbd>
     </button>
@@ -168,7 +229,7 @@
           ? ` — ${app.pendingChanges} change${app.pendingChanges > 1 ? "s" : ""} waiting`
           : ""}
       </button>
-    {:else}
+    {:else if workspaceManaged()}
       <button
         class="ghost sync"
         onclick={() => (app.panel = "settings")}
@@ -176,6 +237,10 @@
       >
         {app.syncState === "saving" ? "Saving…" : "Local only"}
       </button>
+    {:else}
+      <span class="ghost sync" title="Opened folder — PugDock edits files but never touches this folder's git">
+        {app.syncState === "saving" ? "Saving…" : "Folder"}
+      </span>
     {/if}
     <button class="ghost" onclick={() => (app.panel = app.panel === "history" ? null : "history")}>History</button>
     <button class="ghost" onclick={() => (app.panel = app.panel === "ai" ? null : "ai")}>AI</button>
@@ -184,6 +249,9 @@
 
   <div class="body">
     <aside oncontextmenu={(e) => { e.preventDefault(); showMenu(e, null); }}>
+      <button class="new-note" onclick={() => quickNote().catch((e) => toast(errorMessage(e)))}>
+        ＋ New note
+      </button>
       <div class="aside-head">
         <span>Files</span>
         <button class="ghost" title="New file" onclick={() => menuActions.newFile(null)}>＋</button>
@@ -198,7 +266,11 @@
         <div class="tabs">
           <div class="tab-list">
             {#each app.tabs as tab (tab.path)}
-              <div class="tab" class:active={tab.path === app.activePath}>
+              <div
+                class="tab"
+                class:active={tab.path === app.activePath}
+                style="--tab-color: {colorFor(tab.path)}"
+              >
                 <button class="tab-name" onclick={() => (app.activePath = tab.path)}>
                   {tab.dirty ? "● " : ""}{tab.name}
                 </button>
@@ -385,6 +457,66 @@
     font-weight: 600;
     margin-right: 8px;
   }
+  .ws-tabs {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    position: relative;
+    max-width: 50%;
+    overflow-x: auto;
+  }
+  .ws-tab {
+    display: flex;
+    align-items: center;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: none;
+    flex-shrink: 0;
+  }
+  .ws-tab.active {
+    background: color-mix(in srgb, var(--ws-color) 18%, var(--bg));
+    border-color: color-mix(in srgb, var(--ws-color) 55%, var(--border));
+  }
+  .ws-name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: none;
+    padding: 4px 10px;
+    font-size: 12px;
+    color: var(--text-dim);
+    white-space: nowrap;
+  }
+  .ws-tab.active .ws-name {
+    color: var(--text);
+    font-weight: 600;
+  }
+  .ws-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--ws-color);
+    flex-shrink: 0;
+  }
+  .ws-close {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    padding: 2px 7px 2px 0;
+  }
+  .ws-close:hover {
+    color: var(--danger);
+  }
+  .ws-add {
+    flex-shrink: 0;
+  }
+  .ws-menu {
+    position: absolute;
+    top: 30px;
+    right: 0;
+    left: auto;
+  }
   .spacer {
     flex: 1;
   }
@@ -413,6 +545,19 @@
     background: var(--bg-panel);
     display: flex;
     flex-direction: column;
+  }
+  .new-note {
+    margin: 10px 12px 2px;
+    padding: 9px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    background: var(--accent);
+    border: none;
+    border-radius: 8px;
+    color: #10121a;
+  }
+  .new-note:hover {
+    filter: brightness(1.1);
   }
   .aside-head {
     display: flex;
@@ -462,10 +607,12 @@
     display: flex;
     align-items: center;
     border-right: 1px solid var(--border);
+    border-top: 2px solid color-mix(in srgb, var(--tab-color) 45%, transparent);
     flex-shrink: 0;
   }
   .tab.active {
-    background: var(--bg);
+    background: color-mix(in srgb, var(--tab-color) 12%, var(--bg));
+    border-top-color: var(--tab-color);
   }
   .tab-name {
     background: none;

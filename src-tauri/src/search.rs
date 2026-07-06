@@ -11,9 +11,29 @@ const TEXT_EXTS: &[&str] = &[
 ];
 const MAX_INDEX_BYTES: u64 = 2_000_000;
 
-fn open(root: &Path) -> Result<Connection> {
-    fs::create_dir_all(root.join(".pugdock"))?;
-    let conn = Connection::open(root.join(".pugdock/index.sqlite"))?;
+fn fnv(s: &str) -> u64 {
+    s.bytes().fold(0xcbf29ce484222325u64, |h, b| (h ^ b as u64).wrapping_mul(0x100000001b3))
+}
+
+/// Managed workspaces keep their index in `.pugdock/`; opened folders get an
+/// index in the app config dir so PugDock never writes into someone's repo.
+fn index_path(app: &tauri::AppHandle, root: &Path) -> Result<std::path::PathBuf> {
+    use tauri::Manager;
+    let local = root.join(".pugdock");
+    if local.is_dir() {
+        return Ok(local.join("index.sqlite"));
+    }
+    let dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| crate::error::AppError::Other(e.to_string()))?
+        .join("indexes");
+    fs::create_dir_all(&dir)?;
+    Ok(dir.join(format!("{:016x}.sqlite", fnv(&root.to_string_lossy()))))
+}
+
+fn open(app: &tauri::AppHandle, root: &Path) -> Result<Connection> {
+    let conn = Connection::open(index_path(app, root)?)?;
     conn.execute_batch(
         "CREATE VIRTUAL TABLE IF NOT EXISTS files_fts USING fts5(path, content);
          CREATE TABLE IF NOT EXISTS files(path TEXT PRIMARY KEY, mtime INTEGER);",
@@ -43,8 +63,8 @@ fn walk(conn: &Connection, dir: &Path, root: &Path, count: &mut u32) -> Result<(
     for e in fs::read_dir(dir)? {
         let e = e?;
         let name = e.file_name().to_string_lossy().to_string();
-        if name.starts_with('.') {
-            continue; // .git, .pugdock, dotfiles — never indexed
+        if name.starts_with('.') || crate::workspace::SKIP_DIRS.contains(&name.as_str()) {
+            continue; // .git, .pugdock, dotfiles, build dirs — never indexed
         }
         let path = e.path();
         if path.is_dir() {
@@ -73,7 +93,7 @@ fn walk(conn: &Connection, dir: &Path, root: &Path, count: &mut u32) -> Result<(
 pub async fn rebuild_index(app: tauri::AppHandle) -> Result<u32> {
     let root = workspace::workspace_root(&app)?;
     tauri::async_runtime::spawn_blocking(move || {
-        let conn = open(&root)?;
+        let conn = open(&app, &root)?;
         conn.execute("DELETE FROM files_fts", [])?;
         conn.execute("DELETE FROM files", [])?;
         let mut count = 0;
@@ -90,7 +110,7 @@ pub async fn rebuild_index(app: tauri::AppHandle) -> Result<u32> {
 pub fn index_file(app: tauri::AppHandle, path: String, content: Option<String>) -> Result<()> {
     let root = workspace::workspace_root(&app)?;
     let abs = workspace::resolve(&root, &path)?;
-    let conn = open(&root)?;
+    let conn = open(&app, &root)?;
     let text = match content {
         Some(c) => c,
         None => {
@@ -108,7 +128,7 @@ pub fn index_file(app: tauri::AppHandle, path: String, content: Option<String>) 
 #[tauri::command]
 pub fn remove_from_index(app: tauri::AppHandle, path: String) -> Result<()> {
     let root = workspace::workspace_root(&app)?;
-    let conn = open(&root)?;
+    let conn = open(&app, &root)?;
     conn.execute("DELETE FROM files_fts WHERE path = ?1 OR path LIKE ?1 || '/%'", [&path])?;
     conn.execute("DELETE FROM files WHERE path = ?1 OR path LIKE ?1 || '/%'", [&path])?;
     Ok(())
@@ -123,7 +143,7 @@ pub struct SearchHit {
 #[tauri::command]
 pub fn search_workspace(app: tauri::AppHandle, query: String) -> Result<Vec<SearchHit>> {
     let root = workspace::workspace_root(&app)?;
-    let conn = open(&root)?;
+    let conn = open(&app, &root)?;
     // Quote each term so user input can't break FTS5 query syntax.
     let fts_query = query
         .split_whitespace()
@@ -157,7 +177,7 @@ pub fn search_workspace(app: tauri::AppHandle, query: String) -> Result<Vec<Sear
 #[tauri::command]
 pub fn search_context(app: tauri::AppHandle, query: String, limit: u32) -> Result<Vec<(String, String)>> {
     let root = workspace::workspace_root(&app)?;
-    let conn = open(&root)?;
+    let conn = open(&app, &root)?;
     let fts_query = query
         .split_whitespace()
         .map(|t| format!("\"{}\"", t.replace('"', "")))
@@ -179,7 +199,7 @@ pub fn search_context(app: tauri::AppHandle, query: String, limit: u32) -> Resul
 #[tauri::command]
 pub fn folder_contents(app: tauri::AppHandle, prefixes: Vec<String>, limit: u32) -> Result<Vec<(String, String)>> {
     let root = workspace::workspace_root(&app)?;
-    let conn = open(&root)?;
+    let conn = open(&app, &root)?;
     let mut out = Vec::new();
     for prefix in prefixes {
         let mut stmt = conn.prepare(
