@@ -160,3 +160,9 @@ code {
   left: calc(100% + 6px);
   transform: translateY(-50%);
 }
+/* End-aligned: for controls near the window's right edge */
+[data-tip][data-tip-align="end"]:hover::after {
+  left: auto;
+  right: 0;
+  transform: none;
+}

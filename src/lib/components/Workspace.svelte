@@ -14,6 +14,7 @@
   import HistoryPanel from "./HistoryPanel.svelte";
   import ConflictDialog from "./ConflictDialog.svelte";
   import AiFab from "./AiFab.svelte";
+  import { open as openDialog, confirm as dlgConfirm } from "@tauri-apps/plugin-dialog";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { openUrl } from "@tauri-apps/plugin-opener";
@@ -169,8 +170,12 @@
         }),
       ),
     duplicate: (entry: TreeEntry) => run(async () => void (await api.duplicateFile(entry.path))),
-    del: (entry: TreeEntry) => {
-      if (!confirm(`Delete "${entry.path}"? A copy stays in checkpoint history.`)) return;
+    del: async (entry: TreeEntry) => {
+      const ok = await dlgConfirm(`Delete "${entry.path}"?\n\nA copy stays in checkpoint history.`, {
+        title: "Delete",
+        kind: "warning",
+      });
+      if (!ok) return;
       run(async () => {
         await api.deletePath(entry.path);
         closeTab(entry.path);
@@ -178,6 +183,21 @@
       });
     },
     reveal: (entry: TreeEntry) => api.reveal(entry.path),
+    importFiles: async (entry: TreeEntry | null) => {
+      const dir = entry ? dirOf(entry) : app.selectedDir;
+      const picked = await openDialog({ multiple: true, title: "Import files" });
+      const files = Array.isArray(picked) ? picked : typeof picked === "string" ? [picked] : [];
+      if (!files.length) return;
+      await run(async () => {
+        for (const src of files) {
+          const name = src.split(/[/\\]/).pop() ?? "file";
+          const dest = dir ? `${dir}/${name}` : name;
+          await api.importFile(src, dest);
+          api.indexFile(dest).catch(() => {});
+        }
+      });
+      toast(`Imported ${files.length} file${files.length > 1 ? "s" : ""}${dir ? ` into ${dir}/` : ""}`);
+    },
   };
 
   // Drag & drop files from the OS into the workspace.
@@ -282,7 +302,7 @@
         class="ghost sync"
         class:warn={app.syncState === "offline" || app.syncState === "needs-review"}
         onclick={() => syncNow().catch((e) => toast(errorMessage(e)))}
-        data-tip="Sync now"
+        data-tip="Sync now" data-tip-align="end"
       >
         {SYNC_LABEL[app.syncState]}{app.syncState === "offline" && app.pendingChanges
           ? `, ${app.pendingChanges} change${app.pendingChanges > 1 ? "s" : ""} waiting`
@@ -292,12 +312,12 @@
       <button
         class="ghost sync"
         onclick={() => (app.panel = "settings")}
-        data-tip="Sync is off. Connect GitHub in Settings"
+        data-tip="Sync is off. Connect GitHub in Settings" data-tip-align="end"
       >
         {app.syncState === "saving" ? "Saving…" : "Local only"}
       </button>
     {:else}
-      <span class="ghost sync" data-tip="Opened folder: PugDock edits files but never touches this folder's git">
+      <span class="ghost sync" data-tip="Opened folder: PugDock edits files but never touches this folder's git" data-tip-align="end">
         {app.syncState === "saving" ? "Saving…" : "Folder"}
       </span>
     {/if}
@@ -307,6 +327,7 @@
       class="ghost settings-btn"
       aria-label="Settings"
       data-tip="Settings"
+      data-tip-align="end"
       onclick={() => (app.panel = app.panel === "settings" ? null : "settings")}
     >
       <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -430,6 +451,7 @@
                       <button
                         class="ghost"
                         data-tip={paneTab.preview ? "Edit" : "Preview"}
+                        data-tip-align="end"
                         onclick={() => (paneTab.preview = !paneTab.preview)}
                       >
                         {paneTab.preview ? "✏️ Edit" : "👁 Preview"}
@@ -485,6 +507,7 @@
   <div class="ctx" style="left:{menu.x}px; top:{menu.y}px">
     <button onclick={() => menu && menuActions.newFile(menu.entry)}>New file</button>
     <button onclick={() => menu && menuActions.newFolder(menu.entry)}>New folder</button>
+    <button onclick={() => menu && menuActions.importFiles(menu.entry)}>Import files…</button>
     {#if menu.entry}
       {@const entry = menu.entry}
       <hr />

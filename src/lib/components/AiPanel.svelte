@@ -1,5 +1,6 @@
 <script lang="ts">
   import { api, errorMessage, type Model } from "$lib/api";
+  import { confirm as dlgConfirm } from "@tauri-apps/plugin-dialog";
   import { app, openFile, refreshTree, settings, saveSettings, replaceTabContent, toast, isTextFile } from "$lib/state.svelte";
   import * as ai from "$lib/ai";
 
@@ -17,7 +18,7 @@
   const enabled = $derived(settings().aiEnabled);
   const activeTab = $derived(app.tabs.find((t) => t.path === app.activePath));
 
-  function guardFile(): { path: string; content: string } | null {
+  async function guardFile(): Promise<{ path: string; content: string } | null> {
     if (!activeTab || activeTab.kind !== "text") {
       error = "Open a text file first.";
       return null;
@@ -27,7 +28,7 @@
       return null;
     }
     if (settings().askBeforeSendingCode && !isMarkdown(activeTab.path)) {
-      if (!confirm(`Send "${activeTab.path}" to Anthropic?`)) return null;
+      if (!(await dlgConfirm(`Send "${activeTab.path}" to Anthropic?`, { title: "PugDock AI" }))) return null;
     }
     return { path: activeTab.path, content: activeTab.content };
   }
@@ -50,7 +51,7 @@
 
   const organize = () =>
     action("organize", async () => {
-      const f = guardFile();
+      const f = await guardFile();
       if (!f) return;
       const raw = await ai.suggestLabels(f.path, f.content);
       const labels = JSON.parse(raw.replace(/^```json?\n?|```$/g, ""));
@@ -68,10 +69,10 @@
 
   const suggestName = () =>
     action("filename", async () => {
-      const f = guardFile();
+      const f = await guardFile();
       if (!f) return;
       const suggestion = (await ai.suggestFilename(f.content)).trim();
-      if (confirm(`Rename to "${suggestion}"?`)) {
+      if (await dlgConfirm(`Rename to "${suggestion}"?`, { title: "Suggest name" })) {
         await api.renamePath(f.path, suggestion);
         const tab = app.tabs.find((t) => t.path === f.path);
         if (tab) {
@@ -85,7 +86,7 @@
 
   const enrich = () =>
     action("enrich", async () => {
-      const f = guardFile();
+      const f = await guardFile();
       if (!f) return;
       const improved = await ai.enrichNote(f.content);
       await api.writeFile(f.path, improved);
@@ -95,7 +96,7 @@
 
   const explain = () =>
     action("explain", async () => {
-      const f = guardFile();
+      const f = await guardFile();
       if (!f) return;
       const explanation = await ai.explainError(f.content);
       const dest = `notes/explained-${(f.path.split("/").pop() ?? "error").replace(/\.[^.]+$/, "")}.md`;
@@ -112,12 +113,12 @@
       }
       let text: string;
       if (activeTab.kind === "pdf") {
-        if (settings().askBeforeSendingPdfs && !confirm(`Send the text of "${activeTab.path}" to Anthropic?`)) return;
+        if (settings().askBeforeSendingPdfs && !(await dlgConfirm(`Send the text of "${activeTab.path}" to Anthropic?`, { title: "PugDock AI" }))) return;
         const { extractPdfText } = await import("$lib/pdftext");
         text = await extractPdfText(activeTab.content);
         api.indexFile(activeTab.path, text).catch(() => {});
       } else {
-        const f = guardFile();
+        const f = await guardFile();
         if (!f) return;
         text = f.content;
       }
@@ -157,9 +158,16 @@
       chat.push({ role: "pugdock", text: answer, sources: usedFiles });
     });
 
-  async function createFromTemplate(kind: "adr" | "runbook") {
-    const title = prompt(`${kind === "adr" ? "ADR" : "Runbook"} title:`);
-    if (!title) return;
+  let templateAsk = $state<{ kind: "adr" | "runbook"; title: string } | null>(null);
+
+  function createFromTemplate(kind: "adr" | "runbook") {
+    templateAsk = { kind, title: "" };
+  }
+
+  async function confirmTemplate() {
+    if (!templateAsk?.title.trim()) return;
+    const { kind, title } = templateAsk;
+    templateAsk = null;
     const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
     const dest = `${kind === "adr" ? "adr" : "runbooks"}/${slug}.md`;
     const tpl = (kind === "adr" ? ai.ADR_TEMPLATE : ai.RUNBOOK_TEMPLATE).replace("<title>", title);
@@ -229,6 +237,24 @@
     </form>
   {/if}
   {#if error}<p class="error">{error}</p>{/if}
+  {#if templateAsk}
+    <form
+      class="tpl-ask"
+      onsubmit={(e) => {
+        e.preventDefault();
+        confirmTemplate();
+      }}
+    >
+      <!-- svelte-ignore a11y_autofocus -->
+      <input
+        autofocus
+        placeholder={`${templateAsk.kind === "adr" ? "ADR" : "Runbook"} title…`}
+        bind:value={templateAsk.title}
+      />
+      <button type="submit" class="primary">Create</button>
+      <button type="button" onclick={() => (templateAsk = null)}>Cancel</button>
+    </form>
+  {/if}
 </div>
 
 <style>
@@ -311,5 +337,12 @@
     color: var(--danger);
     font-size: 12px;
     margin: 0;
+  }
+  .tpl-ask {
+    display: flex;
+    gap: 6px;
+  }
+  .tpl-ask input {
+    flex: 1;
   }
 </style>

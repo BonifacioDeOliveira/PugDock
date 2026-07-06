@@ -5,7 +5,7 @@
   import { clearModelCache } from "$lib/ai";
   import { themeState, BUILTIN_THEMES, applyTheme, refreshImportedThemes } from "$lib/theme.svelte";
   import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
-  import { open as openDialog } from "@tauri-apps/plugin-dialog";
+  import { open as openDialog, confirm as dlgConfirm } from "@tauri-apps/plugin-dialog";
 
   const s = $derived(settings());
 
@@ -120,7 +120,8 @@
     if (typeof picked !== "string") return;
     const dest = `${picked}/${name}`;
     if (dest === current) return;
-    if (!confirm(`Move the workspace?\n\nFrom: ${current}\nTo: ${dest}\n\nAll files and sync history move with it.`)) return;
+    const ok = await dlgConfirm(`Move the workspace?\n\nFrom: ${current}\nTo: ${dest}\n\nAll files and sync history move with it.`, { title: "Move workspace" });
+    if (!ok) return;
     moving = true;
     try {
       app.config = await api.moveWorkspace(dest);
