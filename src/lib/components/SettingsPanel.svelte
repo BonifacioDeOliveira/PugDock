@@ -9,16 +9,21 @@
   const s = $derived(settings());
 
   let models = $state<Model[]>([]);
-  let anthropicConnected = $state(false);
+  let anthropicAuth = $state<"key" | "oauth" | "ant" | "none">("none");
+  let connectingOauth = $state(false);
   let newKey = $state("");
   let error = $state("");
   let indexing = $state(false);
   let update = $state<UpdateInfo | null | "none" | "checking">(null);
 
+  const anthropicConnected = $derived((anthropicAuth === "key" || anthropicAuth === "oauth") && s.aiEnabled);
+
   $effect(() => {
-    api.hasSecret("anthropic_api_key").then((v) => {
-      anthropicConnected = v;
-      if (v) api.anthropicModels().then((m) => (models = m)).catch(() => {});
+    api.anthropicAuthStatus().then((s) => {
+      anthropicAuth = s;
+      if (s === "key" || s === "oauth") {
+        api.anthropicModels().then((m) => (models = m)).catch(() => {});
+      }
     });
     refreshImportedThemes();
   });
@@ -56,7 +61,7 @@
     error = "";
     try {
       models = await api.anthropicConnect(newKey.trim());
-      anthropicConnected = true;
+      anthropicAuth = "key";
       newKey = "";
       clearModelCache();
       await saveSettings({ aiEnabled: true });
@@ -65,9 +70,29 @@
     }
   }
 
+  async function connectOauth() {
+    error = "";
+    connectingOauth = true;
+    try {
+      // Already logged in via the CLI profile? Just validate and enable.
+      models = anthropicAuth === "oauth" ? await api.anthropicModels() : await api.anthropicOauthLogin();
+      anthropicAuth = "oauth";
+      clearModelCache();
+      await saveSettings({ aiEnabled: true });
+    } catch (e) {
+      error = errorMessage(e);
+    } finally {
+      connectingOauth = false;
+    }
+  }
+
   async function disconnectAi() {
     await api.deleteSecret("anthropic_api_key");
-    anthropicConnected = false;
+    anthropicAuth = await api.anthropicAuthStatus().catch(() => "none" as const);
+    if (anthropicAuth === "oauth") {
+      // Account login belongs to the `ant` CLI profile; PugDock just stops using it.
+      anthropicAuth = "ant";
+    }
     models = [];
     clearModelCache();
     await saveSettings({ aiEnabled: false });
@@ -204,7 +229,10 @@
   <section>
     <h3>AI</h3>
     {#if anthropicConnected}
-      <div class="row"><span>Anthropic</span><span>Connected</span></div>
+      <div class="row">
+        <span>Anthropic</span>
+        <span>{anthropicAuth === "oauth" ? "Connected — Anthropic account" : "Connected — API key"}</span>
+      </div>
       <label class="row">
         <span>Model mode</span>
         <select value={s.modelMode} onchange={(e) => saveSettings({ modelMode: e.currentTarget.value as never })}>
@@ -249,6 +277,19 @@
       </label>
       <div class="btns"><button onclick={disconnectAi}>Disconnect Anthropic</button></div>
     {:else}
+      {#if anthropicAuth === "ant" || anthropicAuth === "oauth"}
+        <div class="btns">
+          <button class="primary" onclick={connectOauth} disabled={connectingOauth}>
+            {connectingOauth ? "Waiting for browser…" : "Sign in with Anthropic"}
+          </button>
+        </div>
+        <p class="dim">Opens your browser to log in with your Anthropic account — no key to copy. Or paste an API key:</p>
+      {:else}
+        <p class="dim">
+          Tip: install the Anthropic CLI (<code>brew install anthropics/tap/ant</code>) to sign in
+          with your Anthropic account instead of pasting a key.
+        </p>
+      {/if}
       <div class="btns" style="align-items:center">
         <input type="password" placeholder="Anthropic API key (sk-ant-…)" bind:value={newKey} style="flex:1" />
         <button class="primary" onclick={connectKey} disabled={!newKey.trim()}>Connect</button>

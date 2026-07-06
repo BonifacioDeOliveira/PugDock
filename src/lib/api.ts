@@ -187,6 +187,8 @@ export const api = {
 
   // anthropic
   anthropicConnect: (apiKey: string) => invoke<Model[]>("anthropic_connect", { apiKey }),
+  anthropicAuthStatus: () => invoke<"key" | "oauth" | "ant" | "none">("anthropic_auth_status"),
+  anthropicOauthLogin: () => invoke<Model[]>("anthropic_oauth_login"),
   anthropicModels: () => invoke<Model[]>("anthropic_models"),
   anthropicRun: (model: string, system: string, prompt: string, maxTokens?: number) =>
     invoke<string>("anthropic_run", { model, system, prompt, maxTokens: maxTokens ?? null }),

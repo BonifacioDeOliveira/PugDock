@@ -196,12 +196,31 @@
   // --- Step 4: optional AI ---
   let anthropicKey = $state("");
   let connectingAi = $state(false);
+  let anthropicAuth = $state<"key" | "oauth" | "ant" | "none">("none");
+
+  $effect(() => {
+    if (step === 4) api.anthropicAuthStatus().then((s) => (anthropicAuth = s));
+  });
 
   async function connectAnthropic() {
     error = "";
     connectingAi = true;
     try {
       await api.anthropicConnect(anthropicKey.trim());
+      await saveSettings({ aiEnabled: true, modelMode: "auto" });
+      finish();
+    } catch (e) {
+      error = errorMessage(e);
+    } finally {
+      connectingAi = false;
+    }
+  }
+
+  async function anthropicOauth() {
+    error = "";
+    connectingAi = true;
+    try {
+      await api.anthropicOauthLogin();
       await saveSettings({ aiEnabled: true, modelMode: "auto" });
       finish();
     } catch (e) {
@@ -320,6 +339,18 @@
         PugDock works without AI. If you connect Anthropic, PugDock can organize, label,
         summarize and enrich your workspace using your own Anthropic API key.
       </p>
+      {#if anthropicAuth === "ant" || anthropicAuth === "oauth"}
+        <button class="primary" onclick={anthropicOauth} disabled={connectingAi}>
+          {connectingAi ? "Waiting for browser…" : "Sign in with Anthropic"}
+        </button>
+        <p class="dim">Opens your browser to log in with your Anthropic account. No key to copy.</p>
+        <p class="dim">Or paste an API key instead:</p>
+      {:else}
+        <p class="dim">
+          Tip: install the Anthropic CLI (<code>brew install anthropics/tap/ant</code>) to
+          sign in with your Anthropic account in the browser instead of pasting a key.
+        </p>
+      {/if}
       <label>
         Anthropic API key
         <input type="password" bind:value={anthropicKey} placeholder="sk-ant-…" />
