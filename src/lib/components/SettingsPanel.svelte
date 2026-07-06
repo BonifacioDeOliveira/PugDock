@@ -11,7 +11,7 @@
   let models = $state<Model[]>([]);
   let anthropicAuth = $state<"key" | "oauth" | "ant" | "none">("none");
   let connectingOauth = $state(false);
-  let newKey = $state("");
+  let oauthStep = $state<string | null>(null);
   let error = $state("");
   let indexing = $state(false);
   let update = $state<UpdateInfo | null | "none" | "checking">(null);
@@ -57,23 +57,16 @@
     await applyTheme("builtin:dark");
   }
 
-  async function connectKey() {
-    error = "";
-    try {
-      models = await api.anthropicConnect(newKey.trim());
-      anthropicAuth = "key";
-      newKey = "";
-      clearModelCache();
-      await saveSettings({ aiEnabled: true });
-    } catch (e) {
-      error = errorMessage(e);
-    }
-  }
-
   async function connectOauth() {
     error = "";
     connectingOauth = true;
     try {
+      if (anthropicAuth === "none") {
+        oauthStep = "Setting up (one time)…";
+        await api.anthropicInstallCli();
+        anthropicAuth = "ant";
+      }
+      oauthStep = "Waiting for browser sign-in…";
       // Already logged in via the CLI profile? Just validate and enable.
       models = anthropicAuth === "oauth" ? await api.anthropicModels() : await api.anthropicOauthLogin();
       anthropicAuth = "oauth";
@@ -83,6 +76,7 @@
       error = errorMessage(e);
     } finally {
       connectingOauth = false;
+      oauthStep = null;
     }
   }
 
@@ -234,31 +228,14 @@
         <span>{anthropicAuth === "oauth" ? "Connected — Anthropic account" : "Connected — API key"}</span>
       </div>
       <label class="row">
-        <span>Model mode</span>
-        <select value={s.modelMode} onchange={(e) => saveSettings({ modelMode: e.currentTarget.value as never })}>
+        <span>Model</span>
+        <select value={s.model ?? "auto"} onchange={(e) => saveSettings({ model: e.currentTarget.value })}>
           <option value="auto">Auto (recommended)</option>
-          <option value="fast">Fast</option>
-          <option value="balanced">Balanced</option>
-          <option value="deep">Deep</option>
-          <option value="custom">Custom</option>
+          {#each models as m (m.id)}
+            <option value={m.id}>{m.display_name}</option>
+          {/each}
         </select>
       </label>
-      {#if s.modelMode === "custom"}
-        {#each [["fast", "Fast tasks"], ["default", "Default tasks"], ["deep", "Deep tasks"]] as [key, label] (key)}
-          <label class="row">
-            <span>{label}</span>
-            <select
-              value={s.customModels?.[key as "fast"] ?? ""}
-              onchange={(e) => saveSettings({ customModels: { ...s.customModels, [key]: e.currentTarget.value } })}
-            >
-              <option value="">(auto)</option>
-              {#each models as m (m.id)}
-                <option value={m.id}>{m.display_name}</option>
-              {/each}
-            </select>
-          </label>
-        {/each}
-      {/if}
       <label class="row">
         <span>Ask before sending code</span>
         <input type="checkbox" checked={s.askBeforeSendingCode} onchange={(e) => saveSettings({ askBeforeSendingCode: e.currentTarget.checked })} />
@@ -277,23 +254,15 @@
       </label>
       <div class="btns"><button onclick={disconnectAi}>Disconnect Anthropic</button></div>
     {:else}
-      {#if anthropicAuth === "ant" || anthropicAuth === "oauth"}
-        <div class="btns">
-          <button class="primary" onclick={connectOauth} disabled={connectingOauth}>
-            {connectingOauth ? "Waiting for browser…" : "Sign in with Anthropic"}
-          </button>
-        </div>
-        <p class="dim">Opens your browser to log in with your Anthropic account — no key to copy. Or paste an API key:</p>
-      {:else}
-        <p class="dim">
-          Tip: install the Anthropic CLI (<code>brew install anthropics/tap/ant</code>) to sign in
-          with your Anthropic account instead of pasting a key.
-        </p>
-      {/if}
-      <div class="btns" style="align-items:center">
-        <input type="password" placeholder="Anthropic API key (sk-ant-…)" bind:value={newKey} style="flex:1" />
-        <button class="primary" onclick={connectKey} disabled={!newKey.trim()}>Connect</button>
+      <div class="btns">
+        <button class="primary" onclick={connectOauth} disabled={connectingOauth}>
+          {oauthStep ?? "Sign in with Anthropic"}
+        </button>
       </div>
+      <p class="dim">
+        Opens your browser to sign in with your Anthropic account — nothing to copy.
+        PugDock sets up what it needs automatically.
+      </p>
     {/if}
   </section>
 

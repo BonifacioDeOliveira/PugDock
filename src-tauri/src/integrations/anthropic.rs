@@ -122,6 +122,45 @@ pub async fn anthropic_auth_status() -> Result<String> {
     Ok(if ant_path().is_some() { "ant" } else { "none" }.into())
 }
 
+/// One-time setup for browser sign-in: installs the official Anthropic CLI
+/// via Homebrew when it's missing. No-op if already installed.
+#[tauri::command]
+pub async fn anthropic_install_cli() -> Result<()> {
+    if ant_path().is_some() {
+        return Ok(());
+    }
+    let brew = ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"]
+        .iter()
+        .map(std::path::PathBuf::from)
+        .find(|p| p.exists())
+        .ok_or_else(|| AppError::Other(
+            "Homebrew is required to set up Anthropic sign-in. Install it from https://brew.sh and try again.".into(),
+        ))?;
+    let out = tokio::process::Command::new(brew)
+        .args(["install", "anthropics/tap/ant"])
+        .output()
+        .await
+        .map_err(|e| AppError::Other(e.to_string()))?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr);
+        return Err(AppError::Other(format!(
+            "Could not install the Anthropic CLI: {}",
+            err.lines().last().unwrap_or("unknown error")
+        )));
+    }
+    // macOS quarantine on freshly downloaded brew binaries
+    if let Some(p) = ant_path() {
+        let _ = tokio::process::Command::new("xattr")
+            .args(["-d", "com.apple.quarantine"])
+            .arg(&p)
+            .output()
+            .await;
+        Ok(())
+    } else {
+        Err(AppError::Other("Install finished but the Anthropic CLI was not found.".into()))
+    }
+}
+
 /// "Sign in with Anthropic": runs `ant auth login`, which opens the browser
 /// for the official Anthropic OAuth flow and stores a refreshable profile.
 /// Resolves once login completes and the token is validated.

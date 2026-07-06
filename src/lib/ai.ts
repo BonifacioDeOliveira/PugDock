@@ -18,6 +18,8 @@ export function clearModelCache() {
  *  with the newest hardcoded families as fallback if the list is unavailable). */
 export function resolveModel(tier: Tier, available: Model[]): string {
   const s = settings();
+  // Single model picker wins over everything when a concrete model is chosen.
+  if (s.model && s.model !== "auto") return s.model;
   if (s.modelMode === "custom") {
     const custom = { fast: s.customModels?.fast, balanced: s.customModels?.default, deep: s.customModels?.deep }[tier];
     if (custom) return custom;

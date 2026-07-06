@@ -1,9 +1,14 @@
 <script lang="ts">
-  import { api, errorMessage } from "$lib/api";
-  import { app, openFile, refreshTree, settings, toast, isTextFile } from "$lib/state.svelte";
+  import { api, errorMessage, type Model } from "$lib/api";
+  import { app, openFile, refreshTree, settings, saveSettings, toast, isTextFile } from "$lib/state.svelte";
   import * as ai from "$lib/ai";
 
   let question = $state("");
+  let modelList = $state<Model[]>([]);
+
+  $effect(() => {
+    if (settings().aiEnabled) ai.models().then((m) => (modelList = m)).catch(() => {});
+  });
   let chat = $state<{ role: "user" | "pugdock"; text: string; sources?: string[] }[]>([]);
   let busy = $state<string | null>(null);
   let error = $state("");
@@ -176,6 +181,18 @@
       <button onclick={() => createFromTemplate("runbook")}>Create runbook</button>
     </div>
   {:else}
+    <label class="model-row">
+      <span>Model</span>
+      <select
+        value={settings().model ?? "auto"}
+        onchange={(e) => saveSettings({ model: e.currentTarget.value })}
+      >
+        <option value="auto">Auto</option>
+        {#each modelList as m (m.id)}
+          <option value={m.id}>{m.display_name}</option>
+        {/each}
+      </select>
+    </label>
     <div class="actions">
       <button onclick={organize} disabled={!!busy}>{busy === "organize" ? "…" : "Organize"}</button>
       <button onclick={suggestName} disabled={!!busy}>{busy === "filename" ? "…" : "Suggest name"}</button>
@@ -223,6 +240,18 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
+  }
+  .model-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+  .model-row select {
+    flex: 1;
+    font-size: 12px;
+    padding: 4px 8px;
   }
   .actions {
     display: flex;

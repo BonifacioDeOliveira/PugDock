@@ -31,6 +31,8 @@ export interface Settings {
   pullOnStartup?: boolean;
   pushOnExit?: boolean;
   aiEnabled?: boolean;
+  /** "auto" or a concrete model id — the single model picker. */
+  model?: string;
   modelMode?: "auto" | "fast" | "balanced" | "deep" | "custom";
   customModels?: { fast?: string; default?: string; deep?: string };
   askBeforeSendingCode?: boolean;
@@ -201,6 +203,7 @@ export const api = {
   // anthropic
   anthropicConnect: (apiKey: string) => invoke<Model[]>("anthropic_connect", { apiKey }),
   anthropicAuthStatus: () => invoke<"key" | "oauth" | "ant" | "none">("anthropic_auth_status"),
+  anthropicInstallCli: () => invoke<void>("anthropic_install_cli"),
   anthropicOauthLogin: () => invoke<Model[]>("anthropic_oauth_login"),
   anthropicModels: () => invoke<Model[]>("anthropic_models"),
   anthropicRun: (model: string, system: string, prompt: string, maxTokens?: number) =>
