@@ -119,6 +119,11 @@ code {
 [data-tip] {
   position: relative;
 }
+/* While hovered, the whole element (and its bubble) rises above siblings,
+   so neighboring content can never paint over the tooltip. */
+[data-tip]:hover {
+  z-index: 700;
+}
 /* The bubble only exists while hovered, so it never inflates scroll areas.
    Background is layered over --bg so it is ALWAYS fully opaque, even when a
    theme defines colors with alpha. Font properties are reset so tooltips on
