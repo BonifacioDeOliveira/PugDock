@@ -1,5 +1,5 @@
 import { api } from "./api";
-import { app, refreshTree, settings, syncEnabled, workspaceManaged, type Tab, type Pane } from "./state.svelte";
+import { app, refreshTree, settings, syncEnabled, workspaceManaged, toast, type Tab, type Pane } from "./state.svelte";
 import { flushSaves, startSync, syncNow } from "./sync";
 
 // Per-workspace UI state, kept while the app is open so switching tabs
@@ -22,7 +22,11 @@ async function activate(path: string) {
   app.conflicts = [];
   app.pendingChanges = 0;
   app.syncState = "saved";
-  await refreshTree().catch(() => {});
+  app.tree = [];
+  app.selectedDir = "";
+  await refreshTree().catch(() => {
+    toast("Could not load this workspace's files.");
+  });
   startSync();
   if (syncEnabled() && settings().pullOnStartup) syncNow().catch(() => {});
   api.rebuildIndex().catch(() => {});

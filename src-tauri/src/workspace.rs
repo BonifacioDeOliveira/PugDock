@@ -276,6 +276,13 @@ fn set_active(cfg: &mut AppConfig, path: &str) {
 #[tauri::command]
 pub fn set_active_workspace(app: tauri::AppHandle, path: String) -> Result<AppConfig> {
     let mut cfg = load_config(&app)?;
+    // A managed workspace whose folder vanished (moved/deleted outside the
+    // app) is recreated empty instead of leaving the UI stuck on stale data.
+    if let Some(entry) = cfg.workspaces.iter().find(|w| w.path == path) {
+        if entry.managed && !Path::new(&path).is_dir() {
+            scaffold(Path::new(&path))?;
+        }
+    }
     set_active(&mut cfg, &path);
     save_config(&app, &cfg)?;
     load_config(&app)
