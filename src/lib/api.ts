@@ -149,6 +149,7 @@ export const api = {
   setActiveWorkspace: (path: string) => invoke<AppConfig>("set_active_workspace", { path }),
   removeWorkspace: (path: string) => invoke<AppConfig>("remove_workspace", { path }),
   moveWorkspace: (newPath: string) => invoke<AppConfig>("move_workspace", { newPath }),
+  exportDiagnostics: () => invoke<string>("export_diagnostics"),
   listTree: () => invoke<TreeEntry[]>("list_tree"),
   readFile: (path: string) => invoke<string>("read_file", { path }),
   readFileBase64: (path: string) => invoke<string>("read_file_base64", { path }),
@@ -177,6 +178,9 @@ export const api = {
   gitHistory: (path?: string, limit?: number) =>
     invoke<Checkpoint[]>("git_history", { path: path ?? null, limit: limit ?? null }),
   gitFileAt: (hash: string, path: string) => invoke<string>("git_file_at", { hash, path }),
+  syncExclusions: () => invoke<string[]>("sync_exclusions"),
+  setSyncExcluded: (path: string, excluded: boolean) =>
+    invoke<string[]>("set_sync_excluded", { path, excluded }),
 
   // search
   rebuildIndex: () => invoke<number>("rebuild_index"),
@@ -210,6 +214,8 @@ export const api = {
   anthropicModels: () => invoke<Model[]>("anthropic_models"),
   anthropicRun: (model: string, system: string, prompt: string, maxTokens?: number) =>
     invoke<string>("anthropic_run", { model, system, prompt, maxTokens: maxTokens ?? null }),
+  anthropicRunStream: (id: string, model: string, system: string, prompt: string) =>
+    invoke<void>("anthropic_run_stream", { id, model, system, prompt }),
 
   // themes
   importVsixTheme: (vsixPath: string) => invoke<ThemeMeta[]>("import_vsix_theme", { vsixPath }),

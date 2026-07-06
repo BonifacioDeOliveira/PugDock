@@ -2,8 +2,11 @@
   import { api, errorMessage } from "$lib/api";
   import { app, openFile, refreshTree, settings, replaceTabContent, toast } from "$lib/state.svelte";
   import * as ai from "$lib/ai";
+  import { listen } from "@tauri-apps/api/event";
+  import { marked } from "marked";
+  import DOMPurify from "dompurify";
 
-  type Msg = { role: "user" | "ai"; text: string; sources?: string[] };
+  type Msg = { role: "user" | "ai"; text: string; sources?: string[]; streaming?: boolean };
 
   let open = $state(false);
   let input = $state("");
@@ -11,6 +14,69 @@
   let busy = $state(false);
   let mode = $state<"chat" | "draft">("chat");
   let thread: HTMLDivElement | undefined = $state();
+
+  function md(text: string): string {
+    return DOMPurify.sanitize(marked.parse(text, { async: false }));
+  }
+
+  // --- persistence: the conversation survives app restarts, per workspace ---
+  const chatKey = () => `pugdock-ai-chat:${app.config?.workspace_path ?? ""}`;
+  let loadedKey = "";
+  $effect(() => {
+    const key = chatKey();
+    if (key !== loadedKey) {
+      loadedKey = key;
+      try {
+        msgs = JSON.parse(localStorage.getItem(key) ?? "[]");
+      } catch {
+        msgs = [];
+      }
+    }
+  });
+  $effect(() => {
+    if (loadedKey) {
+      localStorage.setItem(loadedKey, JSON.stringify(msgs.filter((m) => !m.streaming)));
+    }
+  });
+
+  // --- streaming: append deltas from the backend as they generate ---
+  let streamId = 0;
+  $effect(() => {
+    const un = listen<{ id: string; text: string }>("ai-delta", (e) => {
+      const last = msgs[msgs.length - 1];
+      if (last?.streaming && e.payload.id === String(streamId)) {
+        last.text += e.payload.text;
+        scrollDown();
+      }
+    });
+    return () => void un.then((u) => u());
+  });
+
+  async function askStreaming(q: string, blocks: [string, string][]) {
+    const sources = blocks.map(([p]) => p);
+    streamId++;
+    const id = String(streamId);
+    msgs.push({ role: "ai", text: "", streaming: true });
+    const ctx = blocks.map(([p, t]) => `--- ${p} ---\n${t}`).join("\n\n");
+    const system =
+      "You are PugDock, answering questions about the user's own developer workspace. Use ONLY the provided workspace excerpts. Cite the file paths you used. If the answer isn't in the excerpts, say so.";
+    const prompt = `Workspace excerpts:\n\n${ctx.slice(0, 100000)}\n\nQuestion: ${q}`;
+    try {
+      await api.anthropicRunStream(id, settings().model ?? "auto", system, prompt);
+      const last = msgs[msgs.length - 1];
+      if (last?.streaming) {
+        last.streaming = false;
+        last.sources = sources;
+      }
+    } catch (e) {
+      const last = msgs[msgs.length - 1];
+      if (last?.streaming) msgs.pop();
+      // fall back to the non-streaming path (API key / ant CLI providers)
+      const answer = await ai.askPugdock(q, blocks.map(([path, text]) => ({ path, text })));
+      msgs.push({ role: "ai", text: answer, sources });
+      void e;
+    }
+  }
 
   const enabled = $derived(settings().aiEnabled);
   const activeTab = $derived(app.tabs.find((t) => t.path === app.activePath));
@@ -44,8 +110,7 @@
     } else {
       guarded(async () => {
         const blocks = (await api.searchContext(q, 10)).filter(([p]) => !ai.aiExcluded(p));
-        const answer = await ai.askPugdock(q, blocks.map(([path, text]) => ({ path, text })));
-        msgs.push({ role: "ai", text: answer, sources: blocks.map(([p]) => p) });
+        await askStreaming(q, blocks);
       });
     }
   }
@@ -162,7 +227,12 @@
         {/if}
         {#each msgs as m, i (i)}
           <div class="msg {m.role}">
-            <div class="msg-text">{m.text}</div>
+            {#if m.role === "ai"}
+              <!-- eslint-disable-next-line svelte/no-at-html-tags (sanitized in md()) -->
+              <div class="msg-text md">{@html md(m.text)}</div>
+            {:else}
+              <div class="msg-text">{m.text}</div>
+            {/if}
             {#if m.role === "ai" && !m.text.startsWith("⚠️") && !m.text.startsWith("📝") && !m.text.startsWith("✨") && !m.text.startsWith("✍️")}
               <div class="msg-actions">
                 <button class="ghost" onclick={() => insertIntoNote(m.text)}>Insert into note</button>
@@ -337,6 +407,34 @@
   .msg-text {
     white-space: pre-wrap;
     word-break: break-word;
+  }
+  .msg-text.md {
+    white-space: normal;
+  }
+  .msg-text.md :global(p) {
+    margin: 0.35em 0;
+  }
+  .msg-text.md :global(pre) {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px;
+    overflow-x: auto;
+    font-size: 11.5px;
+  }
+  .msg-text.md :global(code) {
+    font-size: 11.5px;
+  }
+  .msg-text.md :global(ul),
+  .msg-text.md :global(ol) {
+    padding-left: 1.4em;
+    margin: 0.35em 0;
+  }
+  .msg-text.md :global(h1),
+  .msg-text.md :global(h2),
+  .msg-text.md :global(h3) {
+    font-size: 1.05em;
+    margin: 0.5em 0 0.25em;
   }
   .pulse {
     color: var(--text-dim);

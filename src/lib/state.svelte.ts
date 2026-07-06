@@ -57,6 +57,9 @@ export const DEFAULT_SETTINGS: Required<Pick<
 
 export const app = $state({
   loaded: false,
+  pins: [] as string[],
+  recent: [] as string[],
+  syncExcluded: [] as string[],
   config: null as AppConfig | null,
   tree: [] as TreeEntry[],
   /** Open documents (shared store - panes reference them by path). */
@@ -105,6 +108,8 @@ export async function saveSettings(patch: Partial<Settings>) {
 
 export async function refreshTree() {
   app.tree = await api.listTree();
+  app.syncExcluded = await api.syncExclusions().catch(() => []);
+  loadPinsAndRecent();
 }
 
 export function toast(msg: string) {
@@ -146,6 +151,31 @@ export function isTextFile(path: string): boolean {
   return TEXT_EXTS.has(ext) || !path.includes(".");
 }
 
+function wsKey(prefix: string): string {
+  return `${prefix}:${app.config?.workspace_path ?? ""}`;
+}
+
+export function loadPinsAndRecent() {
+  try {
+    app.pins = JSON.parse(localStorage.getItem(wsKey("pugdock-pins")) ?? "[]");
+    app.recent = JSON.parse(localStorage.getItem(wsKey("pugdock-recent")) ?? "[]");
+  } catch {
+    app.pins = [];
+    app.recent = [];
+  }
+}
+
+export function togglePin(path: string) {
+  if (app.pins.includes(path)) app.pins = app.pins.filter((p) => p !== path);
+  else app.pins = [...app.pins, path];
+  localStorage.setItem(wsKey("pugdock-pins"), JSON.stringify(app.pins));
+}
+
+function trackRecent(path: string) {
+  app.recent = [path, ...app.recent.filter((p) => p !== path)].slice(0, 8);
+  localStorage.setItem(wsKey("pugdock-recent"), JSON.stringify(app.recent));
+}
+
 async function loadTab(path: string): Promise<Tab> {
   const existing = app.tabs.find((t) => t.path === path);
   if (existing) return existing;
@@ -175,6 +205,7 @@ export async function openFile(path: string) {
   }
   app.panes[app.focused].paths.push(path);
   focusTab(app.focused, path);
+  trackRecent(path);
 }
 
 /** Move (or open) a file into a target pane, creating the split as needed. */

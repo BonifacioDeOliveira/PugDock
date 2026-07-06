@@ -1,7 +1,7 @@
 <script lang="ts">
   import { api, errorMessage, type TreeEntry } from "$lib/api";
   import { checkForUpdate, type AvailableUpdate } from "$lib/update";
-  import { app, openFile, openToSide, closeTab, focusTab, moveTabToPane, collapseSplit, renameOpenPath, refreshTree, settings, syncEnabled, workspaceManaged, colorFor, toast, type Tab } from "$lib/state.svelte";
+  import { app, openFile, openToSide, closeTab, focusTab, moveTabToPane, collapseSplit, renameOpenPath, refreshTree, settings, syncEnabled, workspaceManaged, colorFor, togglePin, saveSettings, toast, type Tab } from "$lib/state.svelte";
   import { switchWorkspace, addWorkspace, closeWorkspace } from "$lib/workspaces";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
   import MarkdownView from "./MarkdownView.svelte";
@@ -119,6 +119,39 @@
     }
   }
 
+  async function moveFile(from: string, toDir: string) {
+    const name = from.split("/").pop() ?? from;
+    const dest = toDir ? `${toDir}/${name}` : name;
+    if (dest === from) return;
+    await run(async () => {
+      await api.renamePath(from, dest);
+      renameOpenPath(from, dest);
+      api.removeFromIndex(from).catch(() => {});
+      api.indexFile(dest).catch(() => {});
+    });
+  }
+
+  function renameTab(path: string) {
+    menuActions.rename({ path, name: path.split("/").pop() ?? path, is_dir: false, children: null });
+  }
+
+  async function toggleSyncExcluded(entry: TreeEntry) {
+    const excluded = app.syncExcluded.includes(entry.path);
+    try {
+      app.syncExcluded = await api.setSyncExcluded(entry.path, !excluded);
+      toast(excluded ? `${entry.name} will sync again` : `${entry.name} is now local only`);
+    } catch (e) {
+      toast(errorMessage(e));
+    }
+  }
+
+  function toggleAiExcluded(entry: TreeEntry) {
+    const list = settings().aiExcluded;
+    const excluded = list.includes(entry.path);
+    saveSettings({ aiExcluded: excluded ? list.filter((p) => p !== entry.path) : [...list, entry.path] });
+    toast(excluded ? `${entry.name} visible to AI again` : `${entry.name} excluded from AI`);
+  }
+
   const menuActions = {
     newFile: (entry: TreeEntry | null) =>
       ask("New file", dirOf(entry) ? dirOf(entry) + "/" : "notes/", (v) =>
@@ -154,14 +187,24 @@
   $effect(() => {
     const unlisten = getCurrentWebview().onDragDropEvent(async (event) => {
       if (event.payload.type !== "drop") return;
+      // If dropped over a folder in the tree, import there; otherwise inbox/pdfs.
+      let targetDir: string | null = null;
+      const pos = event.payload.position;
+      const el = document.elementFromPoint(pos.x / window.devicePixelRatio, pos.y / window.devicePixelRatio);
+      const row = el?.closest("[data-drop-dir]");
+      if (row) targetDir = row.getAttribute("data-drop-dir");
+      let last = "";
       for (const src of event.payload.paths) {
         const name = src.split(/[/\\]/).pop() ?? "file";
-        const folder = name.toLowerCase().endsWith(".pdf") ? "pdfs" : "inbox";
-        await api.importFile(src, `${folder}/${name}`).catch((e) => toast(errorMessage(e)));
-        api.indexFile(`${folder}/${name}`).catch(() => {});
+        const fallback = name.toLowerCase().endsWith(".pdf") ? "pdfs" : "inbox";
+        const dir = targetDir ?? (workspaceManaged() ? fallback : "");
+        const dest = dir ? `${dir}/${name}` : name;
+        await api.importFile(src, dest).catch((e) => toast(errorMessage(e)));
+        api.indexFile(dest).catch(() => {});
+        last = dir || "workspace";
       }
       await refreshTree();
-      toast("Imported into workspace");
+      toast(`Imported into ${last}`);
     });
     return () => void unlisten.then((u) => u());
   });
@@ -301,12 +344,28 @@
           </svg>
         </button>
       </div>
+      {#if app.pins.length}
+        <div class="aside-head"><span>Pinned</span></div>
+        <div class="quick-list">
+          {#each app.pins as p (p)}
+            <button class="quick-item" onclick={() => openFile(p)} title={p}>📌 {p.split("/").pop()}</button>
+          {/each}
+        </div>
+      {/if}
+      {#if app.recent.length > 1}
+        <div class="aside-head"><span>Recent</span></div>
+        <div class="quick-list">
+          {#each app.recent.slice(0, 5) as p (p)}
+            <button class="quick-item" onclick={() => openFile(p)} title={p}>{p.split("/").pop()}</button>
+          {/each}
+        </div>
+      {/if}
       <div class="aside-head">
         <span>Files</span>
         <button class="ghost" title="New file" onclick={() => menuActions.newFile(null)}>＋</button>
       </div>
       <div class="tree">
-        <FileTree entries={app.tree} onmenu={showMenu} />
+        <FileTree entries={app.tree} onmenu={showMenu} onrename={(e) => menuActions.rename(e)} onmove={moveFile} />
       </div>
     </aside>
 
@@ -354,7 +413,7 @@
                           splitHint = false;
                         }}
                       >
-                        <button class="tab-name" onclick={() => focusTab(pi, path)}>
+                        <button class="tab-name" onclick={() => focusTab(pi, path)} ondblclick={() => renameTab(path)}>
                           {tab.dirty ? "● " : ""}{tab.name}
                         </button>
                         <button class="tab-close" onclick={() => closeTab(path)}>×</button>
@@ -433,6 +492,17 @@
       {#if !entry.is_dir}
         <button onclick={() => menuActions.duplicate(entry)}>Duplicate</button>
       {/if}
+      <button onclick={() => togglePin(entry.path)}>
+        {app.pins.includes(entry.path) ? "Unpin" : "Pin"}
+      </button>
+      {#if workspaceManaged()}
+        <button onclick={() => toggleSyncExcluded(entry)}>
+          {app.syncExcluded.includes(entry.path) ? "Include in sync" : "Exclude from sync (local only)"}
+        </button>
+      {/if}
+      <button onclick={() => toggleAiExcluded(entry)}>
+        {settings().aiExcluded.includes(entry.path) ? "Include in AI" : "Exclude from AI"}
+      </button>
       <button onclick={() => menuActions.reveal(entry)}>Reveal in file manager</button>
       <hr />
       <button class="danger" onclick={() => menuActions.del(entry)}>Delete</button>
@@ -666,6 +736,25 @@
   .new-folder:hover {
     color: var(--text);
     transform: translateY(-1px);
+  }
+  .quick-list {
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 4px;
+  }
+  .quick-item {
+    background: none;
+    border: none;
+    text-align: left;
+    padding: 3px 14px;
+    font-size: 12px;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .quick-item:hover {
+    background: var(--bg-hover);
   }
   .aside-head {
     display: flex;

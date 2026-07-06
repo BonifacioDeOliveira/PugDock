@@ -455,6 +455,43 @@ pub fn import_file(app: tauri::AppHandle, source: String, dest: String) -> Resul
     Ok(())
 }
 
+/// Write a diagnostics report (no secrets) into the app config dir and
+/// return its path so the UI can reveal it.
+#[tauri::command]
+pub fn export_diagnostics(app: tauri::AppHandle) -> Result<String> {
+    use tauri::Manager;
+    let cfg = load_config(&app)?;
+    let mut report = String::new();
+    report.push_str(&format!("PugDock diagnostics\ngenerated: {}\n\n", chrono::Local::now()));
+    report.push_str(&format!("app version: {}\n", app.package_info().version));
+    report.push_str(&format!("os: {} {}\n\n", std::env::consts::OS, std::env::consts::ARCH));
+    report.push_str(&format!("active workspace: {:?}\n", cfg.workspace_path));
+    for w in &cfg.workspaces {
+        report.push_str(&format!(
+            "  - {} ({}) repo: {:?}/{:?}\n",
+            w.name,
+            if w.managed { "managed" } else { "opened folder" },
+            w.repo_owner,
+            w.repo_name
+        ));
+    }
+    report.push_str(&format!("\nsettings: {}\n", serde_json::to_string_pretty(&cfg.settings).unwrap_or_default()));
+    if let Ok(root) = workspace_root(&app) {
+        let git = std::process::Command::new("git")
+            .args(["status", "--short", "--branch"])
+            .current_dir(&root)
+            .output();
+        match git {
+            Ok(o) => report.push_str(&format!("\ngit status:\n{}", String::from_utf8_lossy(&o.stdout))),
+            Err(e) => report.push_str(&format!("\ngit unavailable: {e}\n")),
+        }
+    }
+    let dir = app.path().app_config_dir().map_err(|e| AppError::Other(e.to_string()))?;
+    let dest = dir.join("pugdock-diagnostics.txt");
+    fs::write(&dest, report)?;
+    Ok(dest.to_string_lossy().to_string())
+}
+
 // std has no base64; small local impl beats a dependency for one encoder.
 fn base64_encode(data: &[u8]) -> String {
     const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";

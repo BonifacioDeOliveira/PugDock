@@ -4,7 +4,7 @@
   import { app, settings, saveSettings, refreshTree, toast } from "$lib/state.svelte";
   import { clearModelCache } from "$lib/ai";
   import { themeState, BUILTIN_THEMES, applyTheme, refreshImportedThemes } from "$lib/theme.svelte";
-  import { openUrl } from "@tauri-apps/plugin-opener";
+  import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
 
   const s = $derived(settings());
@@ -209,6 +209,19 @@
       <button onclick={() => api.reveal("")}>Open local folder</button>
       <button onclick={moveWorkspace} disabled={moving}>{moving ? "Moving…" : "Move workspace…"}</button>
       <button onclick={rebuild} disabled={indexing}>{indexing ? "Indexing workspace…" : "Rebuild search index"}</button>
+      <button
+        onclick={async () => {
+          try {
+            const dest = await api.exportDiagnostics();
+            await revealItemInDir(dest);
+            toast("Diagnostics exported");
+          } catch (e) {
+            toast(errorMessage(e));
+          }
+        }}
+      >
+        Export diagnostics
+      </button>
     </div>
   </section>
 

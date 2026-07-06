@@ -70,7 +70,7 @@ async fn run_claude_code(model: Option<&str>, system: &str, prompt: &str) -> Res
     use tokio::io::AsyncWriteExt;
     let claude = claude_code_path().ok_or(AppError::AiNotConnected)?;
     let mut cmd = tokio::process::Command::new(claude);
-    cmd.args(["-p", "--output-format", "text"])
+    cmd.args(["-p", "--output-format", "text", "--setting-sources", ""])
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
@@ -172,6 +172,75 @@ pub async fn anthropic_auth_status() -> Result<String> {
         return Ok("oauth".into());
     }
     Ok(if ant_path().is_some() { "ant" } else { "none" }.into())
+}
+
+/// Streamed variant of `anthropic_run` via Claude Code. Emits `ai-delta`
+/// events with text chunks as they generate, then `ai-done` with the full
+/// text (or `ai-error`). The `id` correlates events to the caller.
+#[tauri::command]
+pub async fn anthropic_run_stream(
+    app: tauri::AppHandle,
+    id: String,
+    model: String,
+    system: String,
+    prompt: String,
+) -> Result<()> {
+    use tauri::Emitter;
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+    let claude = claude_code_path().ok_or(AppError::AiNotConnected)?;
+    let mut cmd = tokio::process::Command::new(claude);
+    cmd.args([
+        "-p",
+        "--output-format",
+        "stream-json",
+        "--include-partial-messages",
+        "--verbose",
+        "--setting-sources",
+        "",
+    ])
+    .stdin(std::process::Stdio::piped())
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped());
+    if model != "auto" {
+        cmd.args(["--model", &model]);
+    }
+    let mut child = cmd.spawn().map_err(|e| AppError::Other(e.to_string()))?;
+    let full = format!("<instructions>\n{system}\n</instructions>\n\n{prompt}");
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(full.as_bytes()).await.map_err(|e| AppError::Other(e.to_string()))?;
+        drop(stdin);
+    }
+    let stdout = child.stdout.take().ok_or_else(|| AppError::Other("no stdout".into()))?;
+    let mut lines = BufReader::new(stdout).lines();
+    let mut result = String::new();
+    let mut streamed = String::new();
+    while let Ok(Some(line)) = lines.next_line().await {
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) else { continue };
+        match v["type"].as_str() {
+            Some("stream_event") => {
+                if let Some(text) = v["event"]["delta"]["text"].as_str() {
+                    streamed.push_str(text);
+                    let _ = app.emit("ai-delta", serde_json::json!({ "id": id, "text": text }));
+                }
+            }
+            Some("result") => {
+                result = v["result"].as_str().unwrap_or(&streamed).to_string();
+            }
+            _ => {}
+        }
+    }
+    let status = child.wait().await.map_err(|e| AppError::Other(e.to_string()))?;
+    if !status.success() {
+        let msg = "Claude Code could not complete the request. Check your sign-in and try again.";
+        let _ = app.emit("ai-error", serde_json::json!({ "id": id, "message": msg }));
+        return Err(AppError::Other(msg.into()));
+    }
+    if result.is_empty() {
+        result = streamed;
+    }
+    let _ = app.emit("ai-done", serde_json::json!({ "id": id, "text": result }));
+    Ok(())
 }
 
 /// Prove the Claude Code sign-in actually works by running a tiny prompt

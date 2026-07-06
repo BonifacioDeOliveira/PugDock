@@ -89,9 +89,9 @@
   let user = $state<GithubUser | null>(null);
   let orgs = $state<string[]>([]);
   let owner = $state("");
-  let repoName = $state("pugdock");
+  let repoName = $state("PugDockNotes");
   let creating = $state(false);
-  let suggestions = $state<string[]>([]);
+  let existingRepo = $state(false);
   let repo = $state<CreatedRepo | null>(null);
 
   async function loadAccounts() {
@@ -103,14 +103,21 @@
   async function createRepo() {
     if (!user) return;
     error = "";
-    suggestions = [];
     creating = true;
     try {
       const name = repoName.trim();
       if (await api.githubRepoExists(owner, name)) {
-        const year = new Date().getFullYear();
-        suggestions = [`${name}-workspace`, `${name}-dev`, `${name}-${year}`];
-        error = `"${owner}/${name}" already exists. Try one of the suggestions below, or pick another name.`;
+        // The repo already exists (probably created by PugDock on another
+        // device). Reuse it: that is how notes sync across devices.
+        existingRepo = true;
+        repo = {
+          full_name: `${owner}/${name}`,
+          clone_url: `https://github.com/${owner}/${name}.git`,
+          html_url: `https://github.com/${owner}/${name}`,
+          private: true,
+        };
+        step = 3;
+        defaultFolder();
         return;
       }
       repo = await api.githubCreateRepo(owner, name, owner !== user.login);
@@ -308,13 +315,6 @@
         Visibility
         <input value="Private" disabled />
       </label>
-      {#if suggestions.length}
-        <div class="suggestions">
-          {#each suggestions as s (s)}
-            <button onclick={() => { repoName = s; suggestions = []; error = ""; }}>{s}</button>
-          {/each}
-        </div>
-      {/if}
       <button class="primary" onclick={createRepo} disabled={creating || !repoName.trim()}>
         {creating ? "Creating…" : "Create private workspace"}
       </button>
@@ -324,6 +324,12 @@
         <input bind:value={folder} onchange={inspect} spellcheck="false" style="flex:1" />
         <button onclick={chooseFolder}>Choose folder</button>
       </div>
+      {#if existingRepo && repo}
+        <p class="dim">
+          Using your existing {repo.full_name} repository. Your notes from other
+          devices will sync into this folder.
+        </p>
+      {/if}
       {#if folderWarning}<p class="warn">{folderWarning}</p>{/if}
       {#if setupDone}
         <div class="summary">
@@ -436,10 +442,6 @@
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 8px 14px;
-  }
-  .suggestions {
-    display: flex;
-    gap: 8px;
   }
   .summary {
     background: var(--bg);

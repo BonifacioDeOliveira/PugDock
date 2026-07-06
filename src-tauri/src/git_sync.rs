@@ -91,6 +91,16 @@ pub async fn git_init_workspace(
         run_git(&root, &["commit", "-m", "pugdock: initialize workspace"]).await?;
     }
     if remote_url.is_some() {
+        // The remote may already hold notes from another device (the shared
+        // PugDockNotes repo). Merge them in, preferring the remote versions
+        // for any overlapping scaffold files, then push.
+        if run_git(&root, &["fetch", "origin", "main"]).await.is_ok() {
+            let _ = run_git(
+                &root,
+                &["merge", "--no-edit", "--allow-unrelated-histories", "-X", "theirs", "origin/main"],
+            )
+            .await;
+        }
         run_git(&root, &["push", "-u", "origin", "main"]).await?;
     }
     Ok(())
@@ -204,6 +214,81 @@ pub async fn git_history(app: tauri::AppHandle, path: Option<String>, limit: Opt
             })
         })
         .collect())
+}
+
+const LOCAL_ONLY_HEADER: &str = "# pugdock:local-only";
+
+fn read_exclusions(root: &Path) -> Vec<String> {
+    let Ok(content) = std::fs::read_to_string(root.join(".gitignore")) else { return vec![] };
+    let mut in_block = false;
+    let mut out = Vec::new();
+    for line in content.lines() {
+        if line.trim() == LOCAL_ONLY_HEADER {
+            in_block = true;
+            continue;
+        }
+        if in_block {
+            if line.trim().is_empty() || line.starts_with('#') {
+                in_block = false;
+            } else {
+                out.push(line.trim().trim_start_matches('/').to_string());
+            }
+        }
+    }
+    out
+}
+
+/// Paths marked "local only" (kept on disk, never synced).
+#[tauri::command]
+pub fn sync_exclusions(app: tauri::AppHandle) -> Result<Vec<String>> {
+    let root = workspace::workspace_root(&app)?;
+    Ok(read_exclusions(&root))
+}
+
+/// Toggle a file/folder as local-only: writes a managed block in .gitignore
+/// and untracks it from git so it stops syncing (the local copy stays).
+#[tauri::command]
+pub async fn set_sync_excluded(app: tauri::AppHandle, path: String, excluded: bool) -> Result<Vec<String>> {
+    let root = workspace::workspace_root(&app)?;
+    let mut list = read_exclusions(&root);
+    if excluded && !list.contains(&path) {
+        list.push(path.clone());
+    } else if !excluded {
+        list.retain(|p| p != &path);
+    }
+    // rewrite the managed block at the end of .gitignore
+    let gi_path = root.join(".gitignore");
+    let content = std::fs::read_to_string(&gi_path).unwrap_or_default();
+    let mut kept: Vec<&str> = Vec::new();
+    let mut in_block = false;
+    for line in content.lines() {
+        if line.trim() == LOCAL_ONLY_HEADER {
+            in_block = true;
+            continue;
+        }
+        if in_block {
+            if line.trim().is_empty() || line.starts_with('#') {
+                in_block = false;
+                if line.starts_with('#') {
+                    kept.push(line);
+                }
+            }
+            continue;
+        }
+        kept.push(line);
+    }
+    let mut new_content = kept.join("\n").trim_end().to_string();
+    if !list.is_empty() {
+        new_content.push_str(&format!("\n\n{LOCAL_ONLY_HEADER}\n"));
+        new_content.push_str(&list.iter().map(|p| format!("/{p}")).collect::<Vec<_>>().join("\n"));
+    }
+    new_content.push('\n');
+    std::fs::write(&gi_path, new_content)?;
+    if excluded && root.join(".git").exists() {
+        // stop tracking without deleting the local copy
+        let _ = run_git(&root, &["rm", "-r", "--cached", "--ignore-unmatch", "--", &path]).await;
+    }
+    Ok(list)
 }
 
 /// File content at a given checkpoint, for version history preview.

@@ -38,6 +38,7 @@ pub fn run() {
             workspace::set_active_workspace,
             workspace::remove_workspace,
             workspace::move_workspace,
+            workspace::export_diagnostics,
             workspace::list_tree,
             workspace::read_file,
             workspace::read_file_base64,
@@ -60,6 +61,8 @@ pub fn run() {
             git_sync::git_status,
             git_sync::git_history,
             git_sync::git_file_at,
+            git_sync::sync_exclusions,
+            git_sync::set_sync_excluded,
             // search
             search::rebuild_index,
             search::index_file,
@@ -84,6 +87,7 @@ pub fn run() {
             integrations::anthropic::anthropic_oauth_login,
             integrations::anthropic::anthropic_models,
             integrations::anthropic::anthropic_run,
+            integrations::anthropic::anthropic_run_stream,
             // themes
             theme::import_vsix_theme,
             theme::list_imported_themes,
