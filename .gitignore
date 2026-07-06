@@ -8,3 +8,7 @@ node_modules
 !.env.example
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# PugDock workspace artifacts (this repo was briefly used as a workspace)
+.pugdock/
+rag/
