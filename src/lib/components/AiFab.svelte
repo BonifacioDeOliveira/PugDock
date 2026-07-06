@@ -30,11 +30,7 @@
   data-tip-pos="top"
   data-tip-align={app.panel ? undefined : "end"}
 >
-  {#if open}
-    ×
-  {:else}
-    <img src="/PugDockAI.png" alt="PugDock AI" />
-  {/if}
+  <img src="/PugDockAI.png" alt="PugDock AI" />
 </button>
 
 <style>
@@ -70,10 +66,6 @@
   .ai-fab:hover {
     transform: scale(1.08);
     background: var(--bg-hover);
-  }
-  .ai-fab.open {
-    font-size: 20px;
-    color: var(--text-dim);
   }
   .ai-pop {
     position: fixed;
