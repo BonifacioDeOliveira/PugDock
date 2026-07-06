@@ -5,7 +5,7 @@
   import { languages } from "@codemirror/language-data";
   import { scheduleSave } from "$lib/sync";
   import { api } from "$lib/api";
-  import { refreshTree, toast } from "$lib/state.svelte";
+  import { refreshTree, toast, isNoteFile } from "$lib/state.svelte";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
   import { themeState, editorExtensions } from "$lib/theme.svelte";
   import type { Tab } from "$lib/state.svelte";
@@ -17,7 +17,7 @@
   const langCompartment = new Compartment();
   const themeCompartment = new Compartment();
 
-  const isMd = $derived(tab.path.endsWith(".md"));
+  const isMd = $derived(isNoteFile(tab.path));
 
   /** Wrap the selection (or insert placeholder) with before/after markers. */
   function wrap(before: string, after = before, placeholder = "") {
@@ -68,7 +68,8 @@
   );
 
   async function langFor(name: string) {
-    const ext = name.split(".").pop()?.toLowerCase() ?? "";
+    // extensionless notes are markdown
+    const ext = name.includes(".") ? (name.split(".").pop()?.toLowerCase() ?? "") : "md";
     const desc =
       languages.find((l) => l.extensions.includes(ext)) ??
       languages.find((l) => l.alias.includes(ext));

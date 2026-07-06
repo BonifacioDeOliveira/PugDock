@@ -1,7 +1,7 @@
 <script lang="ts">
   import { api, errorMessage, type TreeEntry } from "$lib/api";
   import { checkForUpdate, type AvailableUpdate } from "$lib/update";
-  import { app, openFile, openToSide, closeTab, closeEverywhere, focusTab, moveTabToPane, collapseSplit, renameOpenPath, refreshTree, settings, syncEnabled, workspaceManaged, colorFor, togglePin, saveSettings, toast, type Tab } from "$lib/state.svelte";
+  import { app, openFile, openToSide, closeTab, closeEverywhere, focusTab, moveTabToPane, collapseSplit, renameOpenPath, refreshTree, settings, syncEnabled, workspaceManaged, colorFor, togglePin, saveSettings, isNoteFile, toast, type Tab } from "$lib/state.svelte";
   import { switchWorkspace, addWorkspace, closeWorkspace } from "$lib/workspaces";
   import type { WorkspaceEntry } from "$lib/api";
   import MarkdownView from "./MarkdownView.svelte";
@@ -461,7 +461,7 @@
 
     <main>
       {#snippet fileView(tab: Tab, preview: boolean)}
-        {#if tab.kind === "text" && preview && tab.path.endsWith(".md")}
+        {#if tab.kind === "text" && preview && isNoteFile(tab.path)}
           <MarkdownView {tab} />
         {:else if tab.kind === "text"}
           <CodeEditor {tab} />
@@ -513,7 +513,7 @@
                 </div>
                 {#if paneTab}
                   <div class="tab-actions">
-                    {#if paneTab.path.endsWith(".md")}
+                    {#if isNoteFile(paneTab.path)}
                       <button
                         class="ghost"
                         data-tip={paneTab.preview ? "Edit" : "Preview"}

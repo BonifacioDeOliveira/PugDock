@@ -177,6 +177,14 @@ export function fileKind(path: string): Tab["kind"] {
   return "text";
 }
 
+/** A note gets the full writing experience (toolbar, preview, markdown):
+ *  extensionless files count as notes, no format required. */
+export function isNoteFile(path: string): boolean {
+  const name = path.split("/").pop() ?? path;
+  if (!name.includes(".")) return true;
+  return /\.(md|markdown|txt)$/i.test(name);
+}
+
 export function isTextFile(path: string): boolean {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
   return TEXT_EXTS.has(ext) || !path.includes(".");
