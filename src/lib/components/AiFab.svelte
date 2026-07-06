@@ -59,7 +59,7 @@
     msgs.push({ role: "ai", text: "", streaming: true });
     const ctx = blocks.map(([p, t]) => `--- ${p} ---\n${t}`).join("\n\n");
     const system =
-      "You are PugDock, answering questions about the user's own developer workspace. Use ONLY the provided workspace excerpts. Cite the file paths you used. If the answer isn't in the excerpts, say so.";
+      "You are PugDock, answering questions about the user's own developer workspace. Use ONLY the provided workspace excerpts. The excerpt marked 'currently open in the editor' is the note the user is looking at right now; treat it as the primary context. Cite the file paths you used. If the answer isn't in the excerpts, say so.";
     const prompt = `Workspace excerpts:\n\n${ctx.slice(0, 100000)}\n\nQuestion: ${q}`;
     try {
       await api.anthropicRunStream(id, settings().model ?? "auto", system, prompt);
@@ -109,7 +109,15 @@
       guarded(() => createNoteFrom(q));
     } else {
       guarded(async () => {
-        const blocks = (await api.searchContext(q, 10)).filter(([p]) => !ai.aiExcluded(p));
+        let blocks = (await api.searchContext(q, 10)).filter(([p]) => !ai.aiExcluded(p));
+        // The open note is always visible to the chat, in its live state
+        // (including unsaved edits), listed first as primary context.
+        if (activeIsNote && activeTab) {
+          blocks = [
+            [`${activeTab.path} (currently open in the editor)`, activeTab.content.slice(0, 30000)] as [string, string],
+            ...blocks.filter(([p]) => p !== activeTab.path),
+          ];
+        }
         await askStreaming(q, blocks);
       });
     }
@@ -262,6 +270,11 @@
         {/if}
       </div>
 
+      {#if activeIsNote && activeTab}
+        <div class="seeing" data-tip="The chat reads this note live, including unsaved edits">
+          👁 Seeing: {activeTab.name}
+        </div>
+      {/if}
       <form
         class="ai-input"
         onsubmit={(e) => {
@@ -475,10 +488,15 @@
     background: color-mix(in srgb, var(--accent) 20%, var(--bg));
     border-color: var(--accent);
   }
+  .seeing {
+    padding: 6px 14px 0;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
   .ai-input {
     display: flex;
     gap: 8px;
-    padding: 10px 12px 12px;
+    padding: 8px 12px 12px;
   }
   .ai-input input {
     flex: 1;
