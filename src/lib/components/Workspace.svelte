@@ -3,7 +3,6 @@
   import { checkForUpdate, type AvailableUpdate } from "$lib/update";
   import { app, openFile, openToSide, closeTab, focusTab, moveTabToPane, collapseSplit, renameOpenPath, refreshTree, settings, syncEnabled, workspaceManaged, colorFor, togglePin, saveSettings, toast, type Tab } from "$lib/state.svelte";
   import { switchWorkspace, addWorkspace, closeWorkspace } from "$lib/workspaces";
-  import { open as openDialog } from "@tauri-apps/plugin-dialog";
   import MarkdownView from "./MarkdownView.svelte";
   import { syncNow, startSync, pushOnExit, flushSaves } from "$lib/sync";
   import FileTree from "./FileTree.svelte";
@@ -63,25 +62,12 @@
   // --- context menu ---
   let menu = $state<{ x: number; y: number; entry: TreeEntry | null } | null>(null);
 
-  async function pickAndAdd(managed: boolean) {
-    const picked = await openDialog({
-      directory: true,
-      title: managed ? "Choose a folder for the new workspace" : "Open folder",
+  function newWorkspace() {
+    ask("New workspace name", "", (name) => {
+      const clean = name.replace(/[/\\]/g, "-").trim();
+      if (!clean) return;
+      addWorkspace(clean).catch((e) => toast(errorMessage(e)));
     });
-    if (typeof picked === "string") {
-      if (managed) {
-        const info = await api.inspectFolder(picked).catch(() => null);
-        if (info?.is_git_repo) {
-          const ok = confirm(
-            `"${picked}" is already a git repository (probably a code project).\n\n` +
-              `Creating a PugDock workspace here will add note folders and run checkpoints inside it. ` +
-              `To just browse and edit it, use "Open folder" instead.\n\nCreate the workspace here anyway?`,
-          );
-          if (!ok) return;
-        }
-      }
-      await addWorkspace(picked, managed).catch((e) => toast(errorMessage(e)));
-    }
   }
 
   function treeHas(path: string, entries = app.tree): boolean {
@@ -285,7 +271,7 @@
           {/if}
         </div>
       {/each}
-      <button class="ghost ws-add" data-tip="New workspace" onclick={() => pickAndAdd(true)}>＋</button>
+      <button class="ghost ws-add" data-tip="New workspace" onclick={newWorkspace}>＋</button>
     </div>
     <button class="ghost" onclick={() => (app.panel = app.panel === "search" ? null : "search")}>
       Search <kbd>⌘P</kbd>

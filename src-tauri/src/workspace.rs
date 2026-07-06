@@ -145,7 +145,9 @@ fn read_tree(dir: &Path, root: &Path) -> Result<Vec<TreeEntry>> {
     for e in fs::read_dir(dir)? {
         let e = e?;
         let name = e.file_name().to_string_lossy().to_string();
-        if name == ".git" || name == ".pugdock" || name == ".DS_Store" || SKIP_DIRS.contains(&name.as_str()) {
+        // Hidden files (.gitignore, .git, .pugdock, .DS_Store, ...) are
+        // plumbing, not notes: never shown in the tree.
+        if name.starts_with('.') || SKIP_DIRS.contains(&name.as_str()) {
             continue;
         }
         let path = e.path();

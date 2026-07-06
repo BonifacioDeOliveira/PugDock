@@ -37,15 +37,20 @@ export async function switchWorkspace(path: string) {
   await activate(path);
 }
 
-/** New PugDock workspace (scaffolded, local checkpoints) or opened folder. */
-export async function addWorkspace(path: string, managed: boolean) {
+/** The on-disk home of the synced repository (chosen once in onboarding). */
+export function repoRoot(): string | null {
+  return app.config?.workspaces.find((w) => w.managed)?.path ?? app.config?.workspace_path ?? null;
+}
+
+/** Create a named workspace inside the synced repo root. No location to
+ *  pick and no git of its own: the root repository syncs everything. */
+export async function addWorkspace(name: string) {
+  const root = repoRoot();
+  if (!root) throw new Error("No workspace root yet.");
+  const path = `${root}/${name}`;
   await flushSaves().catch(() => {});
   stashCurrent();
-  app.config = await api.addWorkspace(path, managed);
-  if (managed) {
-    // Local checkpoint history for new workspaces; ignore if git is missing.
-    await api.gitInitWorkspace(null, "PugDock", "pugdock@local").catch(() => {});
-  }
+  app.config = await api.addWorkspace(path, true);
   await activate(path);
 }
 
