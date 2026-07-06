@@ -62,10 +62,8 @@
 
   // --- context menu ---
   let menu = $state<{ x: number; y: number; entry: TreeEntry | null } | null>(null);
-  let wsMenu = $state(false);
 
   async function pickAndAdd(managed: boolean) {
-    wsMenu = false;
     const picked = await openDialog({
       directory: true,
       title: managed ? "Choose a folder for the new workspace" : "Open folder",
@@ -261,7 +259,7 @@
   }
 </script>
 
-<svelte:window onkeydown={onKeydown} onclick={() => { menu = null; wsMenu = false; }} />
+<svelte:window onkeydown={onKeydown} onclick={() => (menu = null)} />
 
 <div class="workspace">
   <header>
@@ -287,13 +285,7 @@
           {/if}
         </div>
       {/each}
-      <button class="ghost ws-add" data-tip="New workspace / open folder" onclick={(e) => { e.stopPropagation(); wsMenu = !wsMenu; }}>＋</button>
-      {#if wsMenu}
-        <div class="ctx ws-menu">
-          <button onclick={() => pickAndAdd(true)}>New workspace…</button>
-          <button onclick={() => pickAndAdd(false)}>Open folder…</button>
-        </div>
-      {/if}
+      <button class="ghost ws-add" data-tip="New workspace" onclick={() => pickAndAdd(true)}>＋</button>
     </div>
     <button class="ghost" onclick={() => (app.panel = app.panel === "search" ? null : "search")}>
       Search <kbd>⌘P</kbd>
@@ -366,13 +358,6 @@
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
             <line x1="12" y1="11" x2="12" y2="17" />
             <line x1="9" y1="14" x2="15" y2="14" />
-          </svg>
-        </button>
-        <button class="new-folder" aria-label="Open folder as workspace" data-tip="Open folder as workspace" onclick={() => pickAndAdd(false)}>
-          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-            <polyline points="9 13 12 10 15 13" />
-            <line x1="12" y1="10" x2="12" y2="17" />
           </svg>
         </button>
       </div>
@@ -697,12 +682,6 @@
   }
   .ws-add {
     flex-shrink: 0;
-  }
-  .ws-menu {
-    position: absolute;
-    top: 30px;
-    right: 0;
-    left: auto;
   }
   .spacer {
     flex: 1;
