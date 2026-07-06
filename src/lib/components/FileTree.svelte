@@ -46,7 +46,7 @@
         class:droptarget={dropDir === entry.path}
         class:localonly={app.syncExcluded.includes(entry.path)}
         data-drop-dir={dirOf(entry)}
-        draggable={!entry.is_dir}
+        draggable={true}
         onclick={() => {
           if (!onopen) app.selectedDir = dirOf(entry);
           if (entry.is_dir) open[entry.path] = !open[entry.path];
@@ -59,7 +59,7 @@
           onmenu(e, entry);
         }}
         ondragstart={(e) => {
-          if (!entry.is_dir) e.dataTransfer?.setData("text/pugdock-file", entry.path);
+          e.dataTransfer?.setData("text/pugdock-file", entry.path);
         }}
         ondragover={(e) => {
           if (e.dataTransfer?.types.includes("text/pugdock-file")) {

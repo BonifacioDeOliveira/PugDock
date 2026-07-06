@@ -66,6 +66,26 @@
     "needs-review": "Needs review",
   };
 
+  // --- drag a note/file onto a workspace tab to move it there ---
+  let wsDrop = $state<string | null>(null);
+
+  async function dropOnWorkspace(ws: WorkspaceEntry) {
+    const from = wsDrop && dragPath ? dragPath : null;
+    wsDrop = null;
+    if (!from || ws.path === app.config?.workspace_path) return;
+    try {
+      await api.moveToWorkspace(from, ws.path);
+      closeEverywhere(from);
+      api.removeFromIndex(from).catch(() => {});
+      await refreshTree();
+      toast(`Moved to ${ws.name}`);
+    } catch (e) {
+      toast(errorMessage(e));
+    }
+    dragPath = null;
+    splitHint = false;
+  }
+
   // --- All view: every workspace's tree, grouped and labeled ---
   let allMode = $state(false);
   let allTrees = $state<{ ws: WorkspaceEntry; tree: TreeEntry[] }[]>([]);
@@ -154,6 +174,8 @@
     const name = from.split("/").pop() ?? from;
     const dest = toDir ? `${toDir}/${name}` : name;
     if (dest === from) return;
+    // never drop a folder into itself or its own subtree
+    if (toDir === from || toDir.startsWith(`${from}/`)) return;
     await run(async () => {
       await api.renamePath(from, dest);
       renameOpenPath(from, dest);
@@ -315,7 +337,20 @@
         <div
           class="ws-tab"
           class:active
+          class:wsdrop={wsDrop === ws.path}
           style="--ws-color: {color}"
+          role="presentation"
+          ondragover={(e) => {
+            if (dragPath && ws.path !== app.config?.workspace_path) {
+              e.preventDefault();
+              wsDrop = ws.path;
+            }
+          }}
+          ondragleave={() => (wsDrop = wsDrop === ws.path ? null : wsDrop)}
+          ondrop={(e) => {
+            e.preventDefault();
+            dropOnWorkspace(ws);
+          }}
         >
           <button
             class="ws-name"
@@ -709,6 +744,10 @@
   .ws-tab.active {
     background: color-mix(in srgb, var(--ws-color) 18%, var(--bg));
     border-color: color-mix(in srgb, var(--ws-color) 55%, var(--border));
+  }
+  .ws-tab.wsdrop {
+    background: color-mix(in srgb, var(--accent) 25%, var(--bg));
+    border-color: var(--accent);
   }
   .ws-name {
     display: flex;

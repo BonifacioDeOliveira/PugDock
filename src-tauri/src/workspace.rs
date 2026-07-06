@@ -462,6 +462,38 @@ pub fn import_file(app: tauri::AppHandle, source: String, dest: String) -> Resul
     Ok(())
 }
 
+/// Move a file or folder from the active workspace into another workspace,
+/// keeping its relative path. Same-volume moves are a rename.
+#[tauri::command]
+pub fn move_to_workspace(app: tauri::AppHandle, path: String, target_root: String) -> Result<()> {
+    let root = workspace_root(&app)?;
+    let src = resolve(&root, &path)?;
+    if !src.exists() {
+        return Err(AppError::Other("File not found.".into()));
+    }
+    let target = PathBuf::from(&target_root);
+    if !target.is_dir() {
+        return Err(AppError::Other("Target workspace folder not found.".into()));
+    }
+    let dst = resolve(&target, &path)?;
+    if dst.exists() {
+        return Err(AppError::Other(format!("\"{path}\" already exists in that workspace.")));
+    }
+    if let Some(parent) = dst.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    if fs::rename(&src, &dst).is_err() {
+        if src.is_dir() {
+            copy_dir(&src, &dst)?;
+            fs::remove_dir_all(&src)?;
+        } else {
+            fs::copy(&src, &dst)?;
+            fs::remove_file(&src)?;
+        }
+    }
+    Ok(())
+}
+
 /// Plain file listing of a workspace subfolder (used for hidden app data
 /// like .chats/, which the tree intentionally does not show).
 #[tauri::command]

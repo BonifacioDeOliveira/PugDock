@@ -40,6 +40,7 @@ pub fn run() {
             workspace::move_workspace,
             workspace::export_diagnostics,
             workspace::list_files,
+            workspace::move_to_workspace,
             workspace::list_tree,
             workspace::list_tree_at,
             workspace::read_file,
