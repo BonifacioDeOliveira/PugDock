@@ -59,7 +59,7 @@ fn upsert(conn: &Connection, rel: &str, content: &str, mtime: i64) -> Result<()>
     Ok(())
 }
 
-fn walk(conn: &Connection, dir: &Path, root: &Path, count: &mut u32) -> Result<()> {
+fn walk(conn: &Connection, dir: &Path, root: &Path, skip_abs: &[std::path::PathBuf], count: &mut u32) -> Result<()> {
     for e in fs::read_dir(dir)? {
         let e = e?;
         let name = e.file_name().to_string_lossy().to_string();
@@ -67,8 +67,11 @@ fn walk(conn: &Connection, dir: &Path, root: &Path, count: &mut u32) -> Result<(
             continue; // .git, .pugdock, dotfiles, build dirs - never indexed
         }
         let path = e.path();
+        if skip_abs.iter().any(|s| s == &path) {
+            continue; // other workspaces nested under this one
+        }
         if path.is_dir() {
-            walk(conn, &path, root, count)?;
+            walk(conn, &path, root, skip_abs, count)?;
         } else if let Ok(meta) = e.metadata() {
             if indexable(&path, meta.len()) {
                 if let Ok(content) = fs::read_to_string(&path) {
@@ -92,12 +95,13 @@ fn walk(conn: &Connection, dir: &Path, root: &Path, count: &mut u32) -> Result<(
 #[tauri::command]
 pub async fn rebuild_index(app: tauri::AppHandle) -> Result<u32> {
     let root = workspace::workspace_root(&app)?;
+    let skip = workspace::nested_workspace_paths(&app, &root);
     tauri::async_runtime::spawn_blocking(move || {
         let conn = open(&app, &root)?;
         conn.execute("DELETE FROM files_fts", [])?;
         conn.execute("DELETE FROM files", [])?;
         let mut count = 0;
-        walk(&conn, &root, &root, &mut count)?;
+        walk(&conn, &root, &root, &skip, &mut count)?;
         Ok(count)
     })
     .await

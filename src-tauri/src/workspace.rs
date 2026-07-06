@@ -140,7 +140,7 @@ pub const SKIP_DIRS: &[&str] = &[
     ".venv", "venv", ".gradle", "Pods", "DerivedData", "vendor", ".svelte-kit",
 ];
 
-fn read_tree(dir: &Path, root: &Path) -> Result<Vec<TreeEntry>> {
+fn read_tree(dir: &Path, root: &Path, skip_abs: &[PathBuf]) -> Result<Vec<TreeEntry>> {
     let mut entries: Vec<TreeEntry> = Vec::new();
     for e in fs::read_dir(dir)? {
         let e = e?;
@@ -151,10 +151,14 @@ fn read_tree(dir: &Path, root: &Path) -> Result<Vec<TreeEntry>> {
             continue;
         }
         let path = e.path();
+        // Other workspaces living under this one stay out of its view.
+        if skip_abs.iter().any(|s| s == &path) {
+            continue;
+        }
         let rel = path.strip_prefix(root).unwrap().to_string_lossy().replace('\\', "/");
         let is_dir = path.is_dir();
         entries.push(TreeEntry {
-            children: if is_dir { Some(read_tree(&path, root)?) } else { None },
+            children: if is_dir { Some(read_tree(&path, root, skip_abs)?) } else { None },
             name,
             path: rel,
             is_dir,
@@ -162,6 +166,19 @@ fn read_tree(dir: &Path, root: &Path) -> Result<Vec<TreeEntry>> {
     }
     entries.sort_by(|a, b| (!a.is_dir, a.name.to_lowercase()).cmp(&(!b.is_dir, b.name.to_lowercase())));
     Ok(entries)
+}
+
+/// Paths of OTHER workspaces that live inside `root` (must be hidden from it).
+pub fn nested_workspace_paths(app: &tauri::AppHandle, root: &Path) -> Vec<PathBuf> {
+    load_config(app)
+        .map(|cfg| {
+            cfg.workspaces
+                .iter()
+                .map(|w| PathBuf::from(&w.path))
+                .filter(|p| p != root && p.starts_with(root))
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// Create the standard PugDock folder structure inside `path` (idempotent).
@@ -335,7 +352,8 @@ pub fn remove_workspace(app: tauri::AppHandle, path: String) -> Result<AppConfig
 #[tauri::command]
 pub fn list_tree(app: tauri::AppHandle) -> Result<Vec<TreeEntry>> {
     let root = workspace_root(&app)?;
-    read_tree(&root, &root)
+    let skip = nested_workspace_paths(&app, &root);
+    read_tree(&root, &root, &skip)
 }
 
 #[tauri::command]
