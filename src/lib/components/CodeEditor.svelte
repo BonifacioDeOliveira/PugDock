@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import { EditorView, basicSetup } from "codemirror";
   import { EditorState, Compartment } from "@codemirror/state";
   import { languages } from "@codemirror/language-data";
@@ -27,8 +28,11 @@
 
   $effect(() => {
     const path = tab.path; // track: rebuild editor per file
+    // untrack: the editor OWNS the content while open. Tracking it would
+    // rebuild the editor (and lose cursor/focus) on every keystroke.
+    const initial = untrack(() => tab.content);
     const state = EditorState.create({
-      doc: tab.content,
+      doc: initial,
       extensions: [
         basicSetup,
         themeCompartment.of(editorExtensions(themeState.current)),
