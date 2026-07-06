@@ -16,6 +16,7 @@ export interface Tab {
   kind: "text" | "pdf" | "image";
   content: string; // text content, or base64 for pdf/image
   dirty: boolean;
+  preview: boolean; // markdown rendered view instead of editor
 }
 
 export const DEFAULT_SETTINGS: Required<Pick<
@@ -44,6 +45,8 @@ export const app = $state({
   tree: [] as TreeEntry[],
   tabs: [] as Tab[],
   activePath: null as string | null,
+  /** Right-hand split pane: a path from `tabs`, with its own preview mode. */
+  split: null as { path: string; preview: boolean } | null,
   syncState: "synced" as SyncUiState,
   pendingChanges: 0,
   conflicts: [] as string[],
@@ -109,19 +112,31 @@ export function isTextFile(path: string): boolean {
   return TEXT_EXTS.has(ext) || !path.includes(".");
 }
 
-export async function openFile(path: string) {
+async function loadTab(path: string): Promise<Tab> {
   const existing = app.tabs.find((t) => t.path === path);
-  if (existing) {
-    app.activePath = path;
-    return;
-  }
+  if (existing) return existing;
   const kind = fileKind(path);
   const content = kind === "text" ? await api.readFile(path) : await api.readFileBase64(path);
-  app.tabs.push({ path, name: path.split("/").pop() ?? path, kind, content, dirty: false });
+  const tab: Tab = { path, name: path.split("/").pop() ?? path, kind, content, dirty: false, preview: false };
+  app.tabs.push(tab);
+  return tab;
+}
+
+export async function openFile(path: string) {
+  await loadTab(path);
   app.activePath = path;
 }
 
+export async function openToSide(path: string) {
+  await loadTab(path);
+  // Same file on both sides: right pane becomes a live preview (md) to avoid
+  // two editors fighting over one document.
+  const forcePreview = path === app.activePath && path.endsWith(".md");
+  app.split = { path, preview: forcePreview };
+}
+
 export function closeTab(path: string) {
+  if (app.split?.path === path) app.split = null;
   const i = app.tabs.findIndex((t) => t.path === path);
   if (i === -1) return;
   app.tabs.splice(i, 1);

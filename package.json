@@ -29,6 +29,8 @@
     "@tauri-apps/plugin-dialog": "^2.7.1",
     "@tauri-apps/plugin-opener": "^2",
     "codemirror": "^6.0.2",
+    "dompurify": "^3.4.11",
+    "marked": "^18.0.5",
     "pdfjs-dist": "^5.6.205"
   },
   "devDependencies": {

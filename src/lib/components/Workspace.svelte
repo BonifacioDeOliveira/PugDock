@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api, errorMessage, type TreeEntry, type UpdateInfo } from "$lib/api";
-  import { app, openFile, closeTab, refreshTree, settings, syncEnabled, toast } from "$lib/state.svelte";
+  import { app, openFile, openToSide, closeTab, refreshTree, settings, syncEnabled, toast, type Tab } from "$lib/state.svelte";
+  import MarkdownView from "./MarkdownView.svelte";
   import { syncNow, startSync, pushOnExit, flushSaves } from "$lib/sync";
   import FileTree from "./FileTree.svelte";
   import CodeEditor from "./CodeEditor.svelte";
@@ -15,6 +16,7 @@
   import { openUrl } from "@tauri-apps/plugin-opener";
 
   const activeTab = $derived(app.tabs.find((t) => t.path === app.activePath));
+  const splitTab = $derived(app.split ? app.tabs.find((t) => t.path === app.split?.path) : undefined);
 
   const SYNC_LABEL: Record<string, string> = {
     saved: "Saved",
@@ -138,6 +140,10 @@
     } else if (mod && e.key === "w" && app.activePath) {
       e.preventDefault();
       closeTab(app.activePath);
+    } else if (mod && e.key === "\\") {
+      e.preventDefault();
+      if (app.split) app.split = null;
+      else if (app.activePath) openToSide(app.activePath);
     }
   }
 </script>
@@ -190,33 +196,82 @@
     <main>
       {#if app.tabs.length}
         <div class="tabs">
-          {#each app.tabs as tab (tab.path)}
-            <div class="tab" class:active={tab.path === app.activePath}>
-              <button class="tab-name" onclick={() => (app.activePath = tab.path)}>
-                {tab.dirty ? "● " : ""}{tab.name}
+          <div class="tab-list">
+            {#each app.tabs as tab (tab.path)}
+              <div class="tab" class:active={tab.path === app.activePath}>
+                <button class="tab-name" onclick={() => (app.activePath = tab.path)}>
+                  {tab.dirty ? "● " : ""}{tab.name}
+                </button>
+                <button class="tab-close" onclick={() => closeTab(tab.path)}>×</button>
+              </div>
+            {/each}
+          </div>
+          {#if activeTab}
+            <div class="tab-actions">
+              {#if activeTab.path.endsWith(".md")}
+                <button
+                  class="ghost"
+                  title={activeTab.preview ? "Edit" : "Preview"}
+                  onclick={() => activeTab && (activeTab.preview = !activeTab.preview)}
+                >
+                  {activeTab.preview ? "✏️ Edit" : "👁 Preview"}
+                </button>
+              {/if}
+              <button
+                class="ghost"
+                title="Open to the side (⌘\)"
+                onclick={() => activeTab && openToSide(activeTab.path)}
+              >
+                ⫽ Split
               </button>
-              <button class="tab-close" onclick={() => closeTab(tab.path)}>×</button>
             </div>
-          {/each}
+          {/if}
         </div>
       {/if}
-      <div class="content">
-        {#if activeTab}
-          {#key activeTab.path}
-            {#if activeTab.kind === "text"}
-              <CodeEditor tab={activeTab} />
-            {:else if activeTab.kind === "pdf"}
-              <PdfViewer tab={activeTab} />
-            {:else}
-              <div class="img-wrap">
-                <img src={`data:image;base64,${activeTab.content}`} alt={activeTab.name} />
-              </div>
-            {/if}
-          {/key}
+
+      {#snippet fileView(tab: Tab, preview: boolean)}
+        {#if tab.kind === "text" && preview && tab.path.endsWith(".md")}
+          <MarkdownView {tab} />
+        {:else if tab.kind === "text"}
+          <CodeEditor {tab} />
+        {:else if tab.kind === "pdf"}
+          <PdfViewer {tab} />
         {:else}
-          <div class="empty">
-            <p>🐾</p>
-            <p>Open a file, drop one here, or press <kbd>⌘P</kbd> to search.</p>
+          <div class="img-wrap">
+            <img src={`data:image;base64,${tab.content}`} alt={tab.name} />
+          </div>
+        {/if}
+      {/snippet}
+
+      <div class="content" class:split={!!splitTab}>
+        <div class="pane">
+          {#if activeTab}
+            {#key activeTab.path + (activeTab.preview ? ":p" : ":e")}
+              {@render fileView(activeTab, activeTab.preview)}
+            {/key}
+          {:else}
+            <div class="empty">
+              <p>🐾</p>
+              <p>Open a file, drop one here, or press <kbd>⌘P</kbd> to search.</p>
+            </div>
+          {/if}
+        </div>
+        {#if splitTab && app.split}
+          <div class="pane side">
+            <div class="pane-head">
+              <span class="pane-title">{splitTab.name}</span>
+              {#if splitTab.path.endsWith(".md")}
+                <button class="ghost" onclick={() => app.split && (app.split.preview = !app.split.preview)}>
+                  {app.split.preview ? "✏️" : "👁"}
+                </button>
+              {/if}
+              <button class="ghost" title="Close split" onclick={() => (app.split = null)}>×</button>
+            </div>
+            <div class="pane-body">
+              {#key splitTab.path + (app.split.preview ? ":p" : ":e")}
+                {@render fileView(splitTab, app.split.preview)}
+              {/key}
+            </div>
           </div>
         {/if}
       </div>
@@ -244,6 +299,9 @@
     {#if menu.entry}
       {@const entry = menu.entry}
       <hr />
+      {#if !entry.is_dir}
+        <button onclick={() => openToSide(entry.path)}>Open to the side</button>
+      {/if}
       <button onclick={() => menuActions.rename(entry)}>Rename / move</button>
       {#if !entry.is_dir}
         <button onclick={() => menuActions.duplicate(entry)}>Duplicate</button>
@@ -379,9 +437,26 @@
   }
   .tabs {
     display: flex;
-    overflow-x: auto;
+    align-items: center;
     border-bottom: 1px solid var(--border);
     background: var(--bg-panel);
+  }
+  .tab-list {
+    display: flex;
+    overflow-x: auto;
+    flex: 1;
+    min-width: 0;
+  }
+  .tab-actions {
+    display: flex;
+    gap: 2px;
+    padding: 0 8px;
+    flex-shrink: 0;
+  }
+  .tab-actions button {
+    font-size: 11px;
+    padding: 3px 8px;
+    white-space: nowrap;
   }
   .tab {
     display: flex;
@@ -416,9 +491,45 @@
     min-height: 0;
     overflow: hidden;
     display: flex;
+  }
+  .pane {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
     flex-direction: column;
   }
-  .content > :global(*) {
+  .pane > :global(*) {
+    flex: 1;
+    min-height: 0;
+  }
+  .pane.side {
+    border-left: 1px solid var(--border);
+  }
+  .pane-head {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-panel);
+    flex: 0 0 auto;
+  }
+  .pane-title {
+    flex: 1;
+    font-size: 12px;
+    color: var(--text-dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .pane-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .pane-body > :global(*) {
     flex: 1;
     min-height: 0;
   }
