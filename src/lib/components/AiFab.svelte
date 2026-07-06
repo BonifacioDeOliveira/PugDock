@@ -129,8 +129,21 @@
   <div class="ai-pop">
     <div class="ai-head">
       <span class="ai-title">🐾 PugDock AI</span>
-      <button class="ghost" onclick={() => (msgs = [])} title="Clear conversation">↺</button>
-      <button class="ghost" onclick={() => (open = false)}>×</button>
+      {#if msgs.length > 0}
+        <button
+          class="ghost new-chat"
+          title="Reset the conversation and start a new chat — current messages are discarded"
+          onclick={() => (msgs = [])}
+        >
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            <line x1="12" y1="7" x2="12" y2="13" />
+            <line x1="9" y1="10" x2="15" y2="10" />
+          </svg>
+          New chat
+        </button>
+      {/if}
+      <button class="ghost" onclick={() => (open = false)} title="Close (keeps the conversation)">×</button>
     </div>
 
     {#if !enabled}
@@ -270,6 +283,15 @@
     flex: 1;
     font-weight: 600;
     font-size: 13px;
+  }
+  .new-chat {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11.5px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 3px 9px;
   }
   .ai-connect {
     flex: 1;
