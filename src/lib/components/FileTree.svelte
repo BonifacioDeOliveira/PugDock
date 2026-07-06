@@ -43,7 +43,7 @@
         class="row"
         class:active={app.activePath === entry.path}
         class:selected={entry.is_dir && app.selectedDir === entry.path}
-        class:droptarget={dropDir === entry.path}
+        class:droptarget={dropDir === entry.path || (entry.is_dir && app.osDropTarget === entry.path)}
         class:localonly={app.syncExcluded.includes(entry.path)}
         data-drop-dir={dirOf(entry)}
         draggable={true}

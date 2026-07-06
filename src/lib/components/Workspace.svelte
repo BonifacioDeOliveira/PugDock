@@ -256,16 +256,35 @@
     },
   };
 
-  // Drag & drop files from the OS into the workspace.
+  // Drag & drop files from the OS into the workspace, with live folder
+  // highlight. Coordinates may arrive physical or logical depending on the
+  // platform, so both scales are probed.
+  function dropDirAt(pos: { x: number; y: number }): string | null {
+    const scale = window.devicePixelRatio || 1;
+    for (const [x, y] of [
+      [pos.x / scale, pos.y / scale],
+      [pos.x, pos.y],
+    ]) {
+      const row = document.elementFromPoint(x, y)?.closest("[data-drop-dir]");
+      const dir = row?.getAttribute("data-drop-dir");
+      if (dir !== null && dir !== undefined) return dir;
+    }
+    return null;
+  }
+
   $effect(() => {
     const unlisten = getCurrentWebview().onDragDropEvent(async (event) => {
+      if (event.payload.type === "over") {
+        app.osDropTarget = dropDirAt(event.payload.position);
+        return;
+      }
+      if (event.payload.type === "leave") {
+        app.osDropTarget = null;
+        return;
+      }
       if (event.payload.type !== "drop") return;
-      // If dropped over a folder in the tree, import there; otherwise inbox/pdfs.
-      let targetDir: string | null = null;
-      const pos = event.payload.position;
-      const el = document.elementFromPoint(pos.x / window.devicePixelRatio, pos.y / window.devicePixelRatio);
-      const row = el?.closest("[data-drop-dir]");
-      if (row) targetDir = row.getAttribute("data-drop-dir");
+      const targetDir = dropDirAt(event.payload.position) ?? app.osDropTarget;
+      app.osDropTarget = null;
       let last = "";
       for (const src of event.payload.paths) {
         const name = src.split(/[/\\]/).pop() ?? "file";
@@ -274,7 +293,7 @@
         const dest = dir ? `${dir}/${name}` : name;
         await api.importFile(src, dest).catch((e) => toast(errorMessage(e)));
         api.indexFile(dest).catch(() => {});
-        last = dir || "workspace";
+        last = dir || "workspace root";
       }
       await refreshTree();
       toast(`Imported into ${last}`);

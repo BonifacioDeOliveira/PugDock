@@ -80,6 +80,8 @@ export const app = $state({
   activePath: null as string | null,
   /** Folder selected in the tree; New note and imports target it. */
   selectedDir: "" as string,
+  /** Folder currently hovered by an external (OS) file drag. */
+  osDropTarget: null as string | null,
   syncState: "synced" as SyncUiState,
   pendingChanges: 0,
   conflicts: [] as string[],
