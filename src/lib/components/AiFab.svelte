@@ -331,6 +331,7 @@
           </p>
         {/if}
         {#each msgs as m, i (i)}
+          {@const actionable = m.role === "ai" && !m.streaming && !m.text.startsWith("⚠️") && !m.text.startsWith("📝") && !m.text.startsWith("✨") && !m.text.startsWith("✍️")}
           <div class="msg {m.role}">
             {#if m.role === "ai" && m.streaming && !m.text}
               <div class="thinking">
@@ -343,7 +344,6 @@
             {:else}
               <div class="msg-text">{m.text}</div>
             {/if}
-            {@const actionable = m.role === "ai" && !m.streaming && !m.text.startsWith("⚠️") && !m.text.startsWith("📝") && !m.text.startsWith("✨") && !m.text.startsWith("✍️")}
             {#if actionable || m.sources?.length}
               <div class="msg-foot">
                 <div class="sources">
@@ -464,7 +464,7 @@
     line-height: 1;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
     z-index: 400;
-    transition: transform 0.15s ease;
+    transition: transform 0.15s ease, right 0.2s ease;
     padding: 0;
     overflow: hidden;
     display: flex;
@@ -478,8 +478,7 @@
     border-radius: 50%;
   }
   .ai-fab.dodge {
-    right: auto;
-    left: 24px;
+    right: 364px; /* side panel width + margin */
   }
   .ai-fab:hover {
     transform: scale(1.08);
@@ -507,8 +506,7 @@
     overflow: hidden;
   }
   .ai-pop.dodge {
-    right: auto;
-    left: 24px;
+    right: 364px;
   }
   .conv {
     display: flex;
