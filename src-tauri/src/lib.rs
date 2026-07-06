@@ -39,6 +39,7 @@ pub fn run() {
             workspace::remove_workspace,
             workspace::move_workspace,
             workspace::export_diagnostics,
+            workspace::list_files,
             workspace::list_tree,
             workspace::read_file,
             workspace::read_file_base64,

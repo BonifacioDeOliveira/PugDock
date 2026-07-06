@@ -150,6 +150,7 @@ export const api = {
   removeWorkspace: (path: string) => invoke<AppConfig>("remove_workspace", { path }),
   moveWorkspace: (newPath: string) => invoke<AppConfig>("move_workspace", { newPath }),
   exportDiagnostics: () => invoke<string>("export_diagnostics"),
+  listFiles: (dir: string) => invoke<string[]>("list_files", { dir }),
   listTree: () => invoke<TreeEntry[]>("list_tree"),
   readFile: (path: string) => invoke<string>("read_file", { path }),
   readFileBase64: (path: string) => invoke<string>("read_file_base64", { path }),

@@ -19,25 +19,81 @@
     return DOMPurify.sanitize(marked.parse(text, { async: false }));
   }
 
-  // --- persistence: the conversation survives app restarts, per workspace ---
-  const chatKey = () => `pugdock-ai-chat:${app.config?.workspace_path ?? ""}`;
-  let loadedKey = "";
+  // --- conversations live as files in .chats/ inside the workspace, so
+  // --- they ride the normal checkpoint/push sync across devices ---
+  const CHAT_DIR = ".chats";
+  type ChatMeta = { id: string; title: string; updated: number };
+
+  let chatId = $state<string | null>(null);
+  let view = $state<"chat" | "list">("chat");
+  let conversations = $state<ChatMeta[]>([]);
+  let saveTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function chatTitle(list: Msg[]): string {
+    return list.find((m) => m.role === "user")?.text.slice(0, 48) ?? "New chat";
+  }
+
+  // reset when the workspace changes (paths are workspace-relative)
+  let wsPath = "";
   $effect(() => {
-    const key = chatKey();
-    if (key !== loadedKey) {
-      loadedKey = key;
+    const current = app.config?.workspace_path ?? "";
+    if (current !== wsPath) {
+      wsPath = current;
+      chatId = null;
+      msgs = [];
+      view = "chat";
+    }
+  });
+
+  // debounced save of the active conversation
+  $effect(() => {
+    const clean = msgs.filter((m) => !m.streaming);
+    if (!clean.length) return;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      chatId ??= String(Date.now());
+      const data = { id: chatId, title: chatTitle(clean), updated: Date.now(), msgs: clean };
+      api.writeFile(`${CHAT_DIR}/${chatId}.json`, JSON.stringify(data, null, 1)).catch(() => {});
+    }, 800);
+  });
+
+  async function loadConversations() {
+    const names = await api.listFiles(CHAT_DIR).catch(() => [] as string[]);
+    const metas: ChatMeta[] = [];
+    for (const n of names.filter((n) => n.endsWith(".json"))) {
       try {
-        msgs = JSON.parse(localStorage.getItem(key) ?? "[]");
+        const d = JSON.parse(await api.readFile(`${CHAT_DIR}/${n}`));
+        metas.push({ id: d.id ?? n.replace(/\.json$/, ""), title: d.title ?? "Chat", updated: d.updated ?? 0 });
       } catch {
-        msgs = [];
+        /* skip corrupt file */
       }
     }
-  });
-  $effect(() => {
-    if (loadedKey) {
-      localStorage.setItem(loadedKey, JSON.stringify(msgs.filter((m) => !m.streaming)));
+    conversations = metas.sort((a, b) => b.updated - a.updated);
+  }
+
+  async function openConversation(id: string) {
+    try {
+      const d = JSON.parse(await api.readFile(`${CHAT_DIR}/${id}.json`));
+      msgs = d.msgs ?? [];
+      chatId = id;
+      view = "chat";
+      scrollDown();
+    } catch {
+      toast("Could not open that conversation.");
     }
-  });
+  }
+
+  function startNewChat() {
+    chatId = null;
+    msgs = [];
+    view = "chat";
+  }
+
+  async function deleteConversation(id: string) {
+    await api.deletePath(`${CHAT_DIR}/${id}.json`).catch(() => {});
+    conversations = conversations.filter((c) => c.id !== id);
+    if (chatId === id) startNewChat();
+  }
 
   // --- streaming: append deltas from the backend as they generate ---
   let streamId = 0;
@@ -199,14 +255,33 @@
 <svelte:window onkeydown={onKeydown} />
 
 {#if open}
-  <div class="ai-pop">
+  <div class="ai-pop" class:dodge={!!app.panel}>
     <div class="ai-head">
       <span class="ai-title">🐾 PugDock AI</span>
+      <button
+        class="ghost new-chat"
+        data-tip="Past conversations"
+        data-tip-align="end"
+        aria-label="Past conversations"
+        onclick={() => {
+          if (view === "list") view = "chat";
+          else {
+            loadConversations();
+            view = "list";
+          }
+        }}
+      >
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="10" />
+          <polyline points="12 6 12 12 16 14" />
+        </svg>
+        History
+      </button>
       {#if msgs.length > 0}
         <button
           class="ghost new-chat"
-          data-tip="Reset the conversation and start a new chat. Current messages are discarded" data-tip-align="end"
-          onclick={() => (msgs = [])}
+          data-tip="Start a new chat. This conversation stays in History" data-tip-align="end"
+          onclick={startNewChat}
         >
           <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
@@ -227,6 +302,28 @@
         </button>
       </div>
     {:else}
+      {#if view === "list"}
+        <div class="thread">
+          {#if conversations.length === 0}
+            <p class="hint">No past conversations yet.</p>
+          {/if}
+          {#each conversations as c (c.id)}
+            <div class="conv" class:current={c.id === chatId}>
+              <button class="conv-open" onclick={() => openConversation(c.id)}>
+                <span class="conv-title">{c.title}</span>
+                <span class="conv-date">{new Date(c.updated).toLocaleString()}</span>
+              </button>
+              <button
+                class="ghost conv-del"
+                aria-label="Delete conversation"
+                data-tip="Delete conversation"
+                data-tip-align="end"
+                onclick={() => deleteConversation(c.id)}
+              >×</button>
+            </div>
+          {/each}
+        </div>
+      {:else}
       <div class="thread" bind:this={thread}>
         {#if msgs.length === 0}
           <p class="hint">
@@ -291,6 +388,7 @@
           </div>
         {/if}
       </div>
+      {/if}
 
       <div class="chips">
         <button class="chip" class:on={mode === "draft"} onclick={() => (mode = mode === "draft" ? "chat" : "draft")}>
@@ -328,7 +426,15 @@
   </div>
 {/if}
 
-<button class="ai-fab" class:open onclick={() => (open = !open)} data-tip="PugDock AI" data-tip-pos="top" data-tip-align="end">
+<button
+  class="ai-fab"
+  class:open
+  class:dodge={!!app.panel}
+  onclick={() => (open = !open)}
+  data-tip="PugDock AI"
+  data-tip-pos="top"
+  data-tip-align={app.panel ? undefined : "end"}
+>
   {#if open}
     ×
   {:else}
@@ -363,6 +469,10 @@
     object-fit: cover;
     border-radius: 50%;
   }
+  .ai-fab.dodge {
+    right: auto;
+    left: 24px;
+  }
   .ai-fab:hover {
     transform: scale(1.08);
     background: var(--bg-hover);
@@ -387,6 +497,47 @@
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
     z-index: 399;
     overflow: hidden;
+  }
+  .ai-pop.dodge {
+    right: auto;
+    left: 24px;
+  }
+  .conv {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 2px 4px 2px 0;
+  }
+  .conv.current {
+    border-color: var(--accent);
+  }
+  .conv-open {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    background: none;
+    border: none;
+    padding: 7px 10px;
+    text-align: left;
+    min-width: 0;
+  }
+  .conv-title {
+    font-size: 12.5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+  }
+  .conv-date {
+    font-size: 10.5px;
+    color: var(--text-dim);
+  }
+  .conv-del:hover {
+    color: var(--danger);
   }
   .ai-head {
     display: flex;

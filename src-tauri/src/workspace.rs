@@ -444,6 +444,22 @@ pub fn import_file(app: tauri::AppHandle, source: String, dest: String) -> Resul
     Ok(())
 }
 
+/// Plain file listing of a workspace subfolder (used for hidden app data
+/// like .chats/, which the tree intentionally does not show).
+#[tauri::command]
+pub fn list_files(app: tauri::AppHandle, dir: String) -> Result<Vec<String>> {
+    let root = workspace_root(&app)?;
+    let p = resolve(&root, &dir)?;
+    if !p.is_dir() {
+        return Ok(vec![]);
+    }
+    Ok(fs::read_dir(p)?
+        .flatten()
+        .filter(|e| e.path().is_file())
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .collect())
+}
+
 /// Write a diagnostics report (no secrets) into the app config dir and
 /// return its path so the UI can reveal it.
 #[tauri::command]
