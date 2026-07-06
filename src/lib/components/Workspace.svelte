@@ -69,8 +69,8 @@
   // --- drag a note/file onto a workspace tab to move it there ---
   let wsDrop = $state<string | null>(null);
 
-  async function dropOnWorkspace(ws: WorkspaceEntry) {
-    const from = wsDrop && dragPath ? dragPath : null;
+  async function dropOnWorkspace(e: DragEvent, ws: WorkspaceEntry) {
+    const from = e.dataTransfer?.getData("text/pugdock-file") || dragPath;
     wsDrop = null;
     if (!from || ws.path === app.config?.workspace_path) return;
     try {
@@ -341,7 +341,8 @@
           style="--ws-color: {color}"
           role="presentation"
           ondragover={(e) => {
-            if (dragPath && ws.path !== app.config?.workspace_path) {
+            const hasItem = dragPath || e.dataTransfer?.types.includes("text/pugdock-file");
+            if (hasItem && ws.path !== app.config?.workspace_path) {
               e.preventDefault();
               wsDrop = ws.path;
             }
@@ -349,7 +350,7 @@
           ondragleave={() => (wsDrop = wsDrop === ws.path ? null : wsDrop)}
           ondrop={(e) => {
             e.preventDefault();
-            dropOnWorkspace(ws);
+            dropOnWorkspace(e, ws);
           }}
         >
           <button
