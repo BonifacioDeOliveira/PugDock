@@ -1,7 +1,7 @@
 <script lang="ts">
   import { api, errorMessage, type TreeEntry } from "$lib/api";
   import { checkForUpdate, type AvailableUpdate } from "$lib/update";
-  import { app, openFile, openToSide, closeTab, closeEverywhere, focusTab, moveTabToPane, copyTabToPane, collapseSplit, renameOpenPath, refreshTree, settings, syncEnabled, workspaceManaged, colorFor, togglePin, saveSettings, toast, type Tab } from "$lib/state.svelte";
+  import { app, openFile, openToSide, closeTab, closeEverywhere, focusTab, moveTabToPane, collapseSplit, renameOpenPath, refreshTree, settings, syncEnabled, workspaceManaged, colorFor, togglePin, saveSettings, toast, type Tab } from "$lib/state.svelte";
   import { switchWorkspace, addWorkspace, closeWorkspace } from "$lib/workspaces";
   import MarkdownView from "./MarkdownView.svelte";
   import { syncNow, startSync, pushOnExit, flushSaves } from "$lib/sync";
@@ -35,6 +35,12 @@
     if (!dragPath) return;
     e.preventDefault();
     if (app.panes.length === 1 && paneIndex === 0) {
+      // Splitting only makes sense when other tabs stay behind.
+      const src = app.panes.find((pn) => pn.paths.includes(dragPath ?? ""));
+      if (!src || src.paths.length < 2) {
+        splitHint = false;
+        return;
+      }
       const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
       splitHint = e.clientX > r.left + r.width * 0.7;
     }
@@ -510,9 +516,6 @@
     {#if menu.entry}
       {@const entry = menu.entry}
       <hr />
-      {#if !entry.is_dir}
-        <button onclick={() => openToSide(entry.path)}>Open to the side</button>
-      {/if}
       <button onclick={() => menuActions.rename(entry)}>Rename / move</button>
       {#if !entry.is_dir}
         <button onclick={() => menuActions.duplicate(entry)}>Duplicate</button>
