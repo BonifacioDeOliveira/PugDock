@@ -69,6 +69,8 @@ export const app = $state({
   focused: 0,
   /** Mirror of the focused pane's active path (what side panels act on). */
   activePath: null as string | null,
+  /** Folder selected in the tree; New note and imports target it. */
+  selectedDir: "" as string,
   syncState: "synced" as SyncUiState,
   pendingChanges: 0,
   conflicts: [] as string[],
@@ -102,8 +104,12 @@ export function colorFor(s: string): string {
 
 export async function saveSettings(patch: Partial<Settings>) {
   if (!app.config) return;
-  app.config.settings = { ...app.config.settings, ...patch };
-  await api.setConfig($state.snapshot(app.config) as AppConfig);
+  // Patch on top of the freshest on-disk config so a stale in-memory copy
+  // can never clobber the workspace list or repo fields.
+  const fresh = await api.getConfig();
+  fresh.settings = { ...fresh.settings, ...patch };
+  await api.setConfig(fresh);
+  app.config = fresh;
 }
 
 export async function refreshTree() {

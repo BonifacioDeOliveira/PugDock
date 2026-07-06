@@ -39,11 +39,16 @@
       <button
         class="row"
         class:active={app.activePath === entry.path}
+        class:selected={entry.is_dir && app.selectedDir === entry.path}
         class:droptarget={dropDir === entry.path}
         class:localonly={app.syncExcluded.includes(entry.path)}
         data-drop-dir={dirOf(entry)}
         draggable={!entry.is_dir}
-        onclick={() => (entry.is_dir ? (open[entry.path] = !open[entry.path]) : openFile(entry.path))}
+        onclick={() => {
+          app.selectedDir = dirOf(entry);
+          if (entry.is_dir) open[entry.path] = !open[entry.path];
+          else openFile(entry.path);
+        }}
         ondblclick={() => onrename(entry)}
         oncontextmenu={(e) => {
           e.preventDefault();
@@ -98,6 +103,12 @@
   }
   .row.active {
     background: var(--bg-active);
+  }
+  .row.selected {
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+  }
+  .row.selected .name {
+    color: var(--text);
   }
   .row.droptarget {
     background: color-mix(in srgb, var(--accent) 20%, var(--bg));

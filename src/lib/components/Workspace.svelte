@@ -90,9 +90,11 @@
     return entries.some((e) => e.path === path || (e.children ? treeHas(path, e.children) : false));
   }
 
-  /** Big "New note" button: create instantly, open, let the user rename later. */
+  const noteTargetDir = $derived(app.selectedDir || (workspaceManaged() ? "notes" : ""));
+
+  /** Big "New note" button: create instantly in the selected folder. */
   async function quickNote() {
-    const dir = workspaceManaged() ? "notes/" : "";
+    const dir = noteTargetDir ? `${noteTargetDir}/` : "";
     for (let i = 1; i < 1000; i++) {
       const path = `${dir}untitled${i === 1 ? "" : `-${i}`}.md`;
       if (!treeHas(path)) {
@@ -208,7 +210,7 @@
       for (const src of event.payload.paths) {
         const name = src.split(/[/\\]/).pop() ?? "file";
         const fallback = name.toLowerCase().endsWith(".pdf") ? "pdfs" : "inbox";
-        const dir = targetDir ?? (workspaceManaged() ? fallback : "");
+        const dir = targetDir ?? app.selectedDir ?? (workspaceManaged() ? fallback : "");
         const dest = dir ? `${dir}/${name}` : name;
         await api.importFile(src, dest).catch((e) => toast(errorMessage(e)));
         api.indexFile(dest).catch(() => {});
@@ -337,9 +339,20 @@
   </header>
 
   <div class="body">
-    <aside oncontextmenu={(e) => { e.preventDefault(); showMenu(e, null); }}>
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <aside
+      role="presentation"
+      oncontextmenu={(e) => { e.preventDefault(); showMenu(e, null); }}
+      onclick={(e) => {
+        if ((e.target as HTMLElement).closest(".row, button") === null) app.selectedDir = "";
+      }}
+    >
       <div class="create-row">
-        <button class="new-note" onclick={() => quickNote().catch((e) => toast(errorMessage(e)))}>
+        <button
+          class="new-note"
+          data-tip={`Creates in ${noteTargetDir || "the workspace root"}/ (click a folder to change the target)`}
+          onclick={() => quickNote().catch((e) => toast(errorMessage(e)))}
+        >
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
             <polyline points="14 2 14 8 20 8" />
@@ -627,7 +640,7 @@
     align-items: center;
     gap: 4px;
     position: relative;
-    max-width: 50%;
+    max-width: 60%;
     overflow-x: auto;
     scrollbar-width: none;
   }
@@ -640,7 +653,9 @@
     border: 1px solid var(--border);
     border-radius: 6px;
     background: none;
-    flex-shrink: 0;
+    flex: 0 1 auto;
+    min-width: 56px;
+    overflow: hidden;
   }
   .ws-tab.active {
     background: color-mix(in srgb, var(--ws-color) 18%, var(--bg));
@@ -656,6 +671,9 @@
     font-size: 12px;
     color: var(--text-dim);
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
   }
   .ws-tab.active .ws-name {
     color: var(--text);
