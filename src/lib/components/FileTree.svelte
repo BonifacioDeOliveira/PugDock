@@ -52,6 +52,7 @@
         ondblclick={() => onrename(entry)}
         oncontextmenu={(e) => {
           e.preventDefault();
+          e.stopPropagation();
           onmenu(e, entry);
         }}
         ondragstart={(e) => {
