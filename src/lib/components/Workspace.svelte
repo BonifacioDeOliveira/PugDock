@@ -71,6 +71,17 @@
       title: managed ? "Choose a folder for the new workspace" : "Open folder",
     });
     if (typeof picked === "string") {
+      if (managed) {
+        const info = await api.inspectFolder(picked).catch(() => null);
+        if (info?.is_git_repo) {
+          const ok = confirm(
+            `"${picked}" is already a git repository (probably a code project).\n\n` +
+              `Creating a PugDock workspace here will add note folders and run checkpoints inside it. ` +
+              `To just browse and edit it, use "Open folder" instead.\n\nCreate the workspace here anyway?`,
+          );
+          if (!ok) return;
+        }
+      }
       await addWorkspace(picked, managed).catch((e) => toast(errorMessage(e)));
     }
   }
@@ -341,6 +352,13 @@
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
             <line x1="12" y1="11" x2="12" y2="17" />
             <line x1="9" y1="14" x2="15" y2="14" />
+          </svg>
+        </button>
+        <button class="new-folder" title="Open folder as workspace" onclick={() => pickAndAdd(false)}>
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+            <polyline points="9 13 12 10 15 13" />
+            <line x1="12" y1="10" x2="12" y2="17" />
           </svg>
         </button>
       </div>
