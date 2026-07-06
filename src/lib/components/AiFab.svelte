@@ -243,8 +243,32 @@
             {/if}
             {#if m.role === "ai" && !m.text.startsWith("⚠️") && !m.text.startsWith("📝") && !m.text.startsWith("✨") && !m.text.startsWith("✍️")}
               <div class="msg-actions">
-                <button class="ghost" onclick={() => insertIntoNote(m.text)}>Insert into note</button>
-                <button class="ghost" onclick={() => saveAsNote(m.text)}>Save as note</button>
+                <button
+                  class="ghost icon-action"
+                  aria-label="Insert into the open note"
+                  data-tip="Insert into the open note"
+                  onclick={() => insertIntoNote(m.text)}
+                >
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                    <line x1="12" y1="11" x2="12" y2="17" />
+                    <polyline points="9 14 12 17 15 14" />
+                  </svg>
+                </button>
+                <button
+                  class="ghost icon-action"
+                  aria-label="Save as a new note"
+                  data-tip="Save as a new note"
+                  onclick={() => saveAsNote(m.text)}
+                >
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                    <line x1="12" y1="18" x2="12" y2="12" />
+                    <line x1="9" y1="15" x2="15" y2="15" />
+                  </svg>
+                </button>
               </div>
             {/if}
             {#if m.sources?.length}
@@ -470,6 +494,16 @@
     font-size: 11px;
     padding: 2px 8px;
     color: var(--accent);
+  }
+  .icon-action {
+    display: flex;
+    align-items: center;
+    padding: 3px 6px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+  .icon-action:hover {
+    border-color: var(--accent);
   }
   .chips {
     display: flex;
