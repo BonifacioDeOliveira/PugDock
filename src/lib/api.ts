@@ -174,6 +174,8 @@ export const api = {
     invoke<[string, string][]>("folder_contents", { prefixes, limit }),
 
   // github
+  githubAuthMode: () => invoke<"browser" | "device" | "unconfigured">("github_auth_mode"),
+  githubOauthStart: () => invoke<void>("github_oauth_start"),
   githubDeviceStart: () => invoke<DeviceCode>("github_device_start"),
   githubDevicePoll: (deviceCode: string) => invoke<string>("github_device_poll", { deviceCode }),
   githubUser: () => invoke<GithubUser>("github_user"),

@@ -87,21 +87,32 @@ npm run tauri build    # production bundle
 
 ### GitHub OAuth app (required for login)
 
-PugDock uses the GitHub **Device Flow**. Create a GitHub OAuth App
-(Settings → Developer settings → OAuth Apps):
+Create a GitHub OAuth App at <https://github.com/settings/applications/new>:
 
-- Enable **Device Flow**.
-- No callback URL is needed for device flow (any placeholder works).
+- **Authorization callback URL**: `http://127.0.0.1/callback`
+  (the port is ignored by GitHub for loopback URLs — PugDock picks a free one at runtime)
+- Also check **Enable Device Flow** (used as fallback).
 - Scopes requested at runtime: `repo read:org`.
 
-Then build/run with the client id (it is public, safe to embed):
+PugDock supports two OAuth flows, chosen automatically:
+
+| Env vars set | Flow |
+|---|---|
+| `PUGDOCK_GITHUB_CLIENT_ID` + `PUGDOCK_GITHUB_CLIENT_SECRET` | **Browser flow** — opens GitHub, redirects back to a loopback listener; no code typing |
+| only `PUGDOCK_GITHUB_CLIENT_ID` | **Device flow** — user enters a short code on github.com |
 
 ```sh
-PUGDOCK_GITHUB_CLIENT_ID=Ov23li... npm run tauri dev
+PUGDOCK_GITHUB_CLIENT_ID=Ov23li... PUGDOCK_GITHUB_CLIENT_SECRET=... npm run tauri dev
 ```
 
-Without it, the app boots but "Continue with GitHub" explains that the build has
-no GitHub app configured.
+Both vars are read at runtime (dev) and compile time (release builds embed them).
+Note: GitHub doesn't support PKCE, so the browser flow requires embedding the
+client secret — same trade-off GitHub Desktop makes. The secret only identifies
+the OAuth app; user tokens stay in the OS keychain. If you prefer not to embed
+it, ship with only the client id and PugDock uses the device flow.
+
+Without any of it, the app boots but "Continue with GitHub" explains that the
+build has no GitHub app configured.
 
 ## Releases and updates
 

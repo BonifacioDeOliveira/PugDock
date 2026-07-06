@@ -62,6 +62,8 @@ pub fn run() {
             search::search_context,
             search::folder_contents,
             // github
+            integrations::github::github_auth_mode,
+            integrations::github::github_oauth_start,
             integrations::github::github_device_start,
             integrations::github::github_device_poll,
             integrations::github::github_user,

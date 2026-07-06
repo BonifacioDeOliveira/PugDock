@@ -10,20 +10,35 @@
   let step = $state(1);
   let error = $state("");
 
-  // --- Step 1: GitHub device flow ---
+  // --- Step 1: GitHub login (browser OAuth, device flow as fallback) ---
   let device = $state<DeviceCode | null>(null);
-  let authState = $state<"idle" | "waiting" | "authorized" | "failed" | "expired">("idle");
+  let authState = $state<"idle" | "waiting" | "browser" | "authorized" | "failed" | "expired">("idle");
   let copied = $state(false);
 
   async function startGithub() {
     error = "";
+    device = null;
     try {
+      const mode = await api.githubAuthMode();
+      if (mode === "unconfigured") {
+        error = "No GitHub app configured. Set PUGDOCK_GITHUB_CLIENT_ID (see README).";
+        return;
+      }
+      if (mode === "browser") {
+        authState = "browser";
+        await api.githubOauthStart();
+        authState = "authorized";
+        await loadAccounts();
+        step = 2;
+        return;
+      }
       device = await api.githubDeviceStart();
       authState = "waiting";
       openUrl(device.verification_uri).catch(() => {});
       poll();
     } catch (e) {
       error = errorMessage(e);
+      authState = "failed";
     }
   }
 
@@ -209,6 +224,10 @@
           PugDock asks for permission to create and sync one private repository.
           It never touches your other repos' content.
         </p>
+      {:else if authState === "browser"}
+        <p>Finish signing in with GitHub in your browser…</p>
+        <p class="dim">PugDock will continue automatically once you authorize.</p>
+        <button class="ghost" onclick={() => (authState = "idle")}>Cancel</button>
       {:else if device}
         <p>Enter this code at <strong>{device.verification_uri}</strong>:</p>
         <div class="code-row">
