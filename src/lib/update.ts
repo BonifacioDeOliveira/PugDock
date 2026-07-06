@@ -13,7 +13,7 @@ export interface AvailableUpdate {
 /**
  * Native signed updater first (downloads, installs, relaunches); falls back
  * to the plain GitHub Releases check (link to the release page) when the
- * updater isn't available — e.g. dev builds or unsigned artifacts.
+ * updater isn't available - e.g. dev builds or unsigned artifacts.
  */
 export async function checkForUpdate(includePrereleases = false): Promise<AvailableUpdate | null> {
   try {
@@ -31,7 +31,7 @@ export async function checkForUpdate(includePrereleases = false): Promise<Availa
     }
     return null;
   } catch {
-    // updater not configured for this build — fall through
+    // updater not configured for this build - fall through
   }
   const info = await api.checkUpdates(includePrereleases).catch(() => null);
   return info ? { version: info.latest, notes: info.notes, url: info.url, install: null } : null;

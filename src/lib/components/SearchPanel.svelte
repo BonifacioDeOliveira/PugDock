@@ -53,7 +53,7 @@
       >
         <div class="path">{hit.path}</div>
         {#if hit.snippet}
-          <!-- eslint-disable-next-line svelte/no-at-html-tags — escaped above -->
+          <!-- eslint-disable-next-line svelte/no-at-html-tags - escaped above -->
           <div class="snippet">{@html renderSnippet(hit.snippet)}</div>
         {/if}
       </button>

@@ -48,7 +48,7 @@
       toast(
         imported.length === 1
           ? `Theme "${imported[0].name}" imported and applied`
-          : `${imported.length} themes imported — "${imported[0].name}" applied`,
+          : `${imported.length} themes imported. "${imported[0].name}" applied`,
       );
     } catch (e) {
       error = errorMessage(e);
@@ -76,7 +76,7 @@
         models = await api.anthropicModels();
         clearModelCache();
         await saveSettings({ aiEnabled: true });
-        toast("Claude Code sign-in verified — AI is on");
+        toast("Claude Code sign-in verified. AI is on");
         return;
       }
       if (anthropicAuth === "none") {
@@ -138,7 +138,7 @@
     indexing = true;
     try {
       const n = await api.rebuildIndex();
-      toast(`Search ready — ${n} files indexed`);
+      toast(`Search ready: ${n} files indexed`);
     } finally {
       indexing = false;
     }
@@ -180,7 +180,7 @@
   <section>
     <h3>Account</h3>
     {#if app.config?.repo_name}
-      <div class="row"><span>GitHub</span><span>Connected as {s.githubLogin ?? "—"}</span></div>
+      <div class="row"><span>GitHub</span><span>Connected as {s.githubLogin ?? "-"}</span></div>
       <div class="row">
         <span>Repository</span>
         <span>{app.config?.repo_owner}/{app.config?.repo_name} (private)</span>
@@ -193,7 +193,7 @@
       </div>
     {:else}
       <p class="dim">
-        Sync is off — your workspace lives only on this computer. Connect GitHub to
+        Sync is off. Your workspace lives only on this computer. Connect GitHub to
         back it up and sync it to a private repository.
       </p>
       <div class="btns">
@@ -279,7 +279,7 @@
     {#if anthropicConnected}
       <div class="row">
         <span>Anthropic</span>
-        <span>{anthropicAuth === "claude" ? "Connected — Claude Code" : anthropicAuth === "oauth" ? "Connected — Anthropic account" : "Connected — API key"}</span>
+        <span>{anthropicAuth === "claude" ? "Connected via Claude Code" : anthropicAuth === "oauth" ? "Connected via Anthropic account" : "Connected via API key"}</span>
       </div>
       <label class="row">
         <span>Model</span>
@@ -310,13 +310,13 @@
     {:else}
       <div class="btns">
         <button class="primary" onclick={connectOauth} disabled={connectingOauth}>
-          {oauthStep ?? (anthropicAuth === "claude" ? "Enable AI — uses your Claude Code sign-in" : "Sign in with Anthropic")}
+          {oauthStep ?? (anthropicAuth === "claude" ? "Enable AI using your Claude Code sign-in" : "Sign in with Anthropic")}
         </button>
       </div>
       <p class="dim">
         {anthropicAuth === "claude"
-          ? "Claude Code is installed and signed in with your Anthropic account. One click and AI is on — nothing else to set up."
-          : "Opens your browser to sign in with your Anthropic account — nothing to copy. PugDock sets up what it needs automatically."}
+          ? "Claude Code is installed and signed in with your Anthropic account. One click and AI is on, nothing else to set up."
+          : "Opens your browser to sign in with your Anthropic account, nothing to copy. PugDock sets up what it needs automatically."}
       </p>
     {/if}
   </section>
@@ -337,7 +337,7 @@
       </button>
       {#if update === "none"}<span class="dim">You're up to date.</span>{/if}
       {#if update && typeof update === "object"}
-        <span class="dim">v{update.version} available —</span>
+        <span class="dim">v{update.version} available:</span>
         {#if update.install}
           <button class="primary" onclick={installUpdate} disabled={updating}>
             {updating ? "Updating…" : "Update now"}

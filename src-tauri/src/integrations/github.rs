@@ -5,7 +5,7 @@ use serde_json::json;
 
 /// Public OAuth-app client id (safe to embed). The OAuth app must have
 /// "Device Flow" enabled. See README. Resolution order:
-/// 1. runtime env var (handy in dev — no rebuild needed)
+/// 1. runtime env var (handy in dev - no rebuild needed)
 /// 2. compile-time env var (how release builds embed it)
 fn client_id() -> String {
     std::env::var("PUGDOCK_GITHUB_CLIENT_ID")
@@ -15,7 +15,7 @@ fn client_id() -> String {
 }
 
 /// OAuth-app client secret, needed only for the browser (authorization-code)
-/// flow — GitHub has no PKCE, so desktop apps embed it (as GitHub Desktop does).
+/// flow - GitHub has no PKCE, so desktop apps embed it (as GitHub Desktop does).
 /// Without it PugDock falls back to the device-code flow.
 fn client_secret() -> String {
     std::env::var("PUGDOCK_GITHUB_CLIENT_SECRET")
@@ -81,7 +81,7 @@ const CALLBACK_HTML: &str = "<!doctype html><meta charset=utf-8>\
 <h2>PugDock is connected</h2><p>You can close this tab and return to the app.</p></div>";
 
 /// Pseudo-random hex for the OAuth `state` param. RandomState is seeded from
-/// OS entropy per process — enough for CSRF on a single-shot loopback listener.
+/// OS entropy per process - enough for CSRF on a single-shot loopback listener.
 fn random_state() -> String {
     use std::hash::{BuildHasher, Hasher};
     let mut h = std::collections::hash_map::RandomState::new().build_hasher();

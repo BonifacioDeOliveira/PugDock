@@ -11,11 +11,11 @@ pub const WORKSPACE_DIRS: &[&str] = &[
 ];
 
 const GITIGNORE: &str = "\
-# PugDock local state — never synced
+# PugDock local state - never synced
 .pugdock/
 *.sqlite
 
-# Secrets — never synced
+# Secrets - never synced
 .env
 .env.*
 !.env.example
@@ -35,20 +35,20 @@ tokens
 const WORKSPACE_README: &str = "\
 # PugDock Workspace
 
-This repository is managed by [PugDock](https://github.com/pugdock) — a lightweight
+This repository is managed by [PugDock](https://github.com/pugdock) - a lightweight
 desktop workspace for developers. Files here are synced automatically from the app.
 
-- `inbox/` — unsorted captures
-- `notes/` — general notes
-- `snippets/` — code snippets
-- `commands/` — useful commands
-- `bugs/` — bug notes
-- `adr/` — architecture decision records
-- `runbooks/` — operational runbooks
-- `pdfs/` — PDF documents
-- `references/` — reference material and summaries
-- `projects/` — per-project context
-- `context/` — AI-generated context files
+- `inbox/` - unsorted captures
+- `notes/` - general notes
+- `snippets/` - code snippets
+- `commands/` - useful commands
+- `bugs/` - bug notes
+- `adr/` - architecture decision records
+- `runbooks/` - operational runbooks
+- `pdfs/` - PDF documents
+- `references/` - reference material and summaries
+- `projects/` - per-project context
+- `context/` - AI-generated context files
 ";
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -59,7 +59,7 @@ pub struct WorkspaceEntry {
     pub repo_owner: Option<String>,
     pub repo_name: Option<String>,
     /// true = PugDock-managed (scaffold, checkpoints, sync).
-    /// false = an opened folder — PugDock never touches its git or structure.
+    /// false = an opened folder - PugDock never touches its git or structure.
     pub managed: bool,
 }
 
@@ -158,7 +158,7 @@ pub struct TreeEntry {
     pub children: Option<Vec<TreeEntry>>,
 }
 
-/// Heavy build/dependency dirs — skipped in the tree and the search index so
+/// Heavy build/dependency dirs - skipped in the tree and the search index so
 /// opened code folders stay fast.
 pub const SKIP_DIRS: &[&str] = &[
     "node_modules", "target", "dist", "build", ".next", ".nuxt", "__pycache__",
@@ -343,7 +343,7 @@ pub fn move_workspace(app: tauri::AppHandle, new_path: String) -> Result<AppConf
     load_config(&app)
 }
 
-/// Remove a workspace tab from the list — never deletes any files.
+/// Remove a workspace tab from the list - never deletes any files.
 #[tauri::command]
 pub fn remove_workspace(app: tauri::AppHandle, path: String) -> Result<AppConfig> {
     let mut cfg = load_config(&app)?;

@@ -7,7 +7,7 @@ PDFs, snippets, runbooks and project context in a **private GitHub repo**, with
 optional Anthropic-powered AI.
 
 **Powerful, but invisible.** PugDock uses Git, GitHub and a local search index under
-the hood — the user only sees "Saved", "Syncing", "Synced" and a clean workspace.
+the hood - the user only sees "Saved", "Syncing", "Synced" and a clean workspace.
 No PugDock account. No PugDock servers. No CLI. Local-first, free.
 
 ## How it works
@@ -15,7 +15,7 @@ No PugDock account. No PugDock servers. No CLI. Local-first, free.
 1. Open PugDock → **Continue with GitHub** (device flow, token stored in the OS keychain).
 2. Choose the owner (you or an org) and a name → PugDock creates a **private** repo.
 3. Choose a local folder → PugDock scaffolds the workspace structure and links it to the repo.
-4. Write, drop in files and PDFs, search — everything autosaves locally, checkpoints
+4. Write, drop in files and PDFs, search - everything autosaves locally, checkpoints
    after ~60s of idle, and pushes to GitHub every few minutes and on exit.
 5. Optionally connect Anthropic (your own API key) for Organize, Enrich, Summarize,
    Explain error, Build context and Ask PugDock.
@@ -60,13 +60,13 @@ src-tauri/src/                # Rust core
 Key decisions:
 
 - **Git via subprocess**, not libgit2: less code, robust HTTPS auth. The token is
-  injected through an inline credential helper reading an **env var** — it never
+  injected through an inline credential helper reading an **env var** - it never
   touches disk or the process argument list. macOS ships git; if missing, PugDock
   shows a friendly install message.
 - **Sync model**: save to disk (600ms debounce) → `git commit` checkpoint after
   idle (default 60s) → `git push` every ~4 min / on exit / on "Sync now".
   Pull on startup with `git merge`; conflicts surface as "Needs review" with
-  per-file *Keep local / Keep GitHub / Compare* — never resolved destructively.
+  per-file *Keep local / Keep GitHub / Compare* - never resolved destructively.
 - **AI is a thin proxy**: the Anthropic key lives only in the keychain and Rust;
   the webview never sees it. Secret-looking files (`.env`, keys, credentials) are
   read-only in the editor, git-ignored, and blocked from AI requests.
@@ -90,7 +90,7 @@ npm run tauri build    # production bundle
 Create a GitHub OAuth App at <https://github.com/settings/applications/new>:
 
 - **Authorization callback URL**: `http://127.0.0.1/callback`
-  (the port is ignored by GitHub for loopback URLs — PugDock picks a free one at runtime)
+  (the port is ignored by GitHub for loopback URLs - PugDock picks a free one at runtime)
 - Also check **Enable Device Flow** (used as fallback).
 - Scopes requested at runtime: `repo read:org`.
 
@@ -98,8 +98,8 @@ PugDock supports two OAuth flows, chosen automatically:
 
 | Env vars set | Flow |
 |---|---|
-| `PUGDOCK_GITHUB_CLIENT_ID` + `PUGDOCK_GITHUB_CLIENT_SECRET` | **Browser flow** — opens GitHub, redirects back to a loopback listener; no code typing |
-| only `PUGDOCK_GITHUB_CLIENT_ID` | **Device flow** — user enters a short code on github.com |
+| `PUGDOCK_GITHUB_CLIENT_ID` + `PUGDOCK_GITHUB_CLIENT_SECRET` | **Browser flow** - opens GitHub, redirects back to a loopback listener; no code typing |
+| only `PUGDOCK_GITHUB_CLIENT_ID` | **Device flow** - user enters a short code on github.com |
 
 ```sh
 PUGDOCK_GITHUB_CLIENT_ID=Ov23li... PUGDOCK_GITHUB_CLIENT_SECRET=... npm run tauri dev
@@ -107,7 +107,7 @@ PUGDOCK_GITHUB_CLIENT_ID=Ov23li... PUGDOCK_GITHUB_CLIENT_SECRET=... npm run taur
 
 Both vars are read at runtime (dev) and compile time (release builds embed them).
 Note: GitHub doesn't support PKCE, so the browser flow requires embedding the
-client secret — same trade-off GitHub Desktop makes. The secret only identifies
+client secret - same trade-off GitHub Desktop makes. The secret only identifies
 the OAuth app; user tokens stay in the OS keychain. If you prefer not to embed
 it, ship with only the client id and PugDock uses the device flow.
 
@@ -127,12 +127,12 @@ Releases are fully automated by `.github/workflows/release.yml`:
 
 3. GitHub Actions builds **macOS (Apple Silicon + Intel)** and **Ubuntu Linux**
    (`.dmg`/`.app`, `.AppImage`, `.deb`), signs the updater artifacts, and
-   publishes everything — including the `latest.json` update manifest — to the
+   publishes everything - including the `latest.json` update manifest - to the
    tag's **GitHub Release**.
 
 Installed apps check for updates on startup (and via *Settings → Check for
 updates*). When a new version exists, the in-app dialog shows the release notes
-and **Update now** downloads, verifies the signature, installs, and relaunches —
+and **Update now** downloads, verifies the signature, installs, and relaunches -
 one click, never silent. Dev builds without updater artifacts fall back to a
 "View release" link.
 
@@ -142,13 +142,13 @@ Add these **Actions secrets** (repo → Settings → Secrets → Actions):
 
 | Secret | Value |
 |---|---|
-| `TAURI_SIGNING_PRIVATE_KEY` | Contents of `~/.pugdock-updater.key` (generated with `npx tauri signer generate`; **never commit it** — losing it means future updates can't be signed) |
+| `TAURI_SIGNING_PRIVATE_KEY` | Contents of `~/.pugdock-updater.key` (generated with `npx tauri signer generate`; **never commit it** - losing it means future updates can't be signed) |
 | `PUGDOCK_GITHUB_CLIENT_ID` | Your GitHub OAuth app client id |
 | `PUGDOCK_GITHUB_CLIENT_SECRET` | Your GitHub OAuth app client secret |
 
 The matching public key is committed in `tauri.conf.json > plugins > updater`.
 The updater endpoint points at this repo's releases
-(`.../releases/latest/download/latest.json`) — the repo (or at least its
+(`.../releases/latest/download/latest.json`) - the repo (or at least its
 releases) must be publicly accessible for installed apps to see updates.
 
 ## Privacy

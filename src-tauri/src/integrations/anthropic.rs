@@ -57,7 +57,7 @@ fn ant_path() -> Option<std::path::PathBuf> {
     find_bin("ant", &[])
 }
 
-/// The Claude Code CLI — the primary AI provider, exactly like claude-mem:
+/// The Claude Code CLI - the primary AI provider, exactly like claude-mem:
 /// it authenticates via the user's existing Claude Code sign-in (their
 /// Anthropic account), so PugDock needs no key and no extra login.
 fn claude_code_path() -> Option<std::path::PathBuf> {
@@ -158,7 +158,7 @@ pub async fn anthropic_connect(api_key: String) -> Result<Vec<Model>> {
 }
 
 /// Current auth situation, for the UI to pick the right connect flow:
-/// "claude" (Claude Code installed — preferred, like claude-mem) | "key" |
+/// "claude" (Claude Code installed - preferred, like claude-mem) | "key" |
 /// "oauth" (ant CLI profile) | "ant" (CLI installed, not logged in) | "none".
 #[tauri::command]
 pub async fn anthropic_auth_status() -> Result<String> {
@@ -196,7 +196,7 @@ pub async fn anthropic_verify() -> Result<()> {
 /// via Homebrew when it's missing. No-op if already installed.
 #[tauri::command]
 pub async fn anthropic_install_cli() -> Result<()> {
-    // Serialize concurrent calls (UI pre-warm + user click) — brew can't run twice.
+    // Serialize concurrent calls (UI pre-warm + user click) - brew can't run twice.
     static LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
     let _guard = LOCK.lock().await;
     if ant_path().is_some() {
@@ -282,7 +282,7 @@ pub async fn anthropic_models() -> Result<Vec<Model>> {
 /// key-holding proxy so the API key never reaches the webview.
 #[tauri::command]
 pub async fn anthropic_run(model: String, system: String, prompt: String, max_tokens: Option<u32>) -> Result<String> {
-    // Claude Code first — same mechanism as claude-mem: the local CLI runs
+    // Claude Code first - same mechanism as claude-mem: the local CLI runs
     // the request under the user's existing Anthropic sign-in.
     if claude_code_path().is_some() {
         let m = (model != "auto").then_some(model.as_str());

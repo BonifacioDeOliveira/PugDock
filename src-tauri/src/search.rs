@@ -64,7 +64,7 @@ fn walk(conn: &Connection, dir: &Path, root: &Path, count: &mut u32) -> Result<(
         let e = e?;
         let name = e.file_name().to_string_lossy().to_string();
         if name.starts_with('.') || crate::workspace::SKIP_DIRS.contains(&name.as_str()) {
-            continue; // .git, .pugdock, dotfiles, build dirs — never indexed
+            continue; // .git, .pugdock, dotfiles, build dirs - never indexed
         }
         let path = e.path();
         if path.is_dir() {

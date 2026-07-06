@@ -44,11 +44,11 @@
     {#if compare}
       <div class="compare">
         <div>
-          <h4>Local — {compare.path}</h4>
+          <h4>Local: {compare.path}</h4>
           <pre>{compare.local.slice(0, 8000)}</pre>
         </div>
         <div>
-          <h4>GitHub — {compare.path}</h4>
+          <h4>GitHub: {compare.path}</h4>
           <pre>{compare.github.slice(0, 8000)}</pre>
         </div>
       </div>

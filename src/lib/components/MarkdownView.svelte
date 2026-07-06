@@ -10,7 +10,7 @@
 </script>
 
 <div class="md-view">
-  <!-- eslint-disable-next-line svelte/no-at-html-tags — sanitized above -->
+  <!-- eslint-disable-next-line svelte/no-at-html-tags - sanitized above -->
   {@html html}
 </div>
 

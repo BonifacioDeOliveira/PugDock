@@ -56,7 +56,7 @@
     checkpointing: "Creating checkpoint…",
     syncing: "Syncing…",
     synced: "Synced",
-    offline: "Offline — will sync later",
+    offline: "Offline. Will sync later",
     "needs-review": "Needs review",
   };
 
@@ -251,19 +251,19 @@
         title="Sync now"
       >
         {SYNC_LABEL[app.syncState]}{app.syncState === "offline" && app.pendingChanges
-          ? ` — ${app.pendingChanges} change${app.pendingChanges > 1 ? "s" : ""} waiting`
+          ? `, ${app.pendingChanges} change${app.pendingChanges > 1 ? "s" : ""} waiting`
           : ""}
       </button>
     {:else if workspaceManaged()}
       <button
         class="ghost sync"
         onclick={() => (app.panel = "settings")}
-        title="Sync is off — connect GitHub in Settings"
+        title="Sync is off. Connect GitHub in Settings"
       >
         {app.syncState === "saving" ? "Saving…" : "Local only"}
       </button>
     {:else}
-      <span class="ghost sync" title="Opened folder — PugDock edits files but never touches this folder's git">
+      <span class="ghost sync" title="Opened folder: PugDock edits files but never touches this folder's git">
         {app.syncState === "saving" ? "Saving…" : "Folder"}
       </span>
     {/if}

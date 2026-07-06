@@ -157,7 +157,7 @@
         folderWarning = "This folder is not empty. Existing files will become part of your workspace and sync to GitHub.";
       }
     } catch {
-      /* folder may not exist yet — fine */
+      /* folder may not exist yet - fine */
     }
   }
 
@@ -274,7 +274,7 @@
           PugDock asks for permission to create and sync one private repository.
           It never touches your other repos' content.
         </p>
-        <button class="ghost" onclick={skipGithub}>Skip — use PugDock locally, without sync</button>
+        <button class="ghost" onclick={skipGithub}>Skip and use PugDock locally, without sync</button>
       {:else if authState === "browser"}
         <p>Finish signing in with GitHub in your browser…</p>
         <p class="dim">PugDock will continue automatically once you authorize.</p>
@@ -332,7 +332,7 @@
             <div><span class="dim">GitHub repo</span> <code>{repo.full_name}</code> (private)</div>
             <div><span class="dim">Sync</span> Enabled</div>
           {:else}
-            <div><span class="dim">Sync</span> Off — connect GitHub anytime in Settings</div>
+            <div><span class="dim">Sync</span> Off. Connect GitHub anytime in Settings</div>
           {/if}
         </div>
         <button class="primary" onclick={() => (step = 4)}>Continue</button>
@@ -348,12 +348,12 @@
         summarize and enrich your workspace using your own Anthropic API key.
       </p>
       <button class="primary" onclick={anthropicOauth} disabled={connectingAi}>
-        {aiStep ?? (anthropicAuth === "claude" ? "Enable AI — uses your Claude Code sign-in" : "Sign in with Anthropic")}
+        {aiStep ?? (anthropicAuth === "claude" ? "Enable AI using your Claude Code sign-in" : "Sign in with Anthropic")}
       </button>
       <p class="dim">
         {anthropicAuth === "claude"
-          ? "Claude Code is installed and signed in with your Anthropic account — nothing else to set up."
-          : "Opens your browser to sign in with your Anthropic account — nothing to copy. PugDock sets up what it needs automatically."}
+          ? "Claude Code is installed and signed in with your Anthropic account. Nothing else to set up."
+          : "Opens your browser to sign in with your Anthropic account, nothing to copy. PugDock sets up what it needs automatically."}
       </p>
       <div class="code-row">
         <button onclick={finish} disabled={connectingAi}>Skip for now</button>

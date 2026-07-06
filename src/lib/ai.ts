@@ -92,7 +92,7 @@ export function summarize(name: string, text: string) {
 export function buildContext(name: string, corpus: string) {
   return run(
     "deep",
-    `You build a project context file that a developer will paste into an AI coding assistant. From the workspace excerpts provided, produce Markdown with sections: Overview, Architecture notes, Important files, Decisions, Known bugs, Commands, Snippets, Open questions, References. Only include sections with real content. Start with "# ${name} — context".`,
+    `You build a project context file that a developer will paste into an AI coding assistant. From the workspace excerpts provided, produce Markdown with sections: Overview, Architecture notes, Important files, Decisions, Known bugs, Commands, Snippets, Open questions, References. Only include sections with real content. Start with "# ${name} context".`,
     corpus.slice(0, 150000),
   );
 }
@@ -110,7 +110,7 @@ export function askPugdock(question: string, contextBlocks: { path: string; text
 export function continueWriting(content: string) {
   return run(
     "balanced",
-    `You continue a developer's Markdown note from where it stops, matching its tone, structure and language. Reply with ONLY the continuation text — do not repeat existing content.`,
+    `You continue a developer's Markdown note from where it stops, matching its tone, structure and language. Reply with ONLY the continuation text - do not repeat existing content.`,
     content.slice(-12000),
   );
 }

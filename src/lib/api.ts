@@ -31,7 +31,7 @@ export interface Settings {
   pullOnStartup?: boolean;
   pushOnExit?: boolean;
   aiEnabled?: boolean;
-  /** "auto" or a concrete model id — the single model picker. */
+  /** "auto" or a concrete model id - the single model picker. */
   model?: string;
   modelMode?: "auto" | "fast" | "balanced" | "deep" | "custom";
   customModels?: { fast?: string; default?: string; deep?: string };

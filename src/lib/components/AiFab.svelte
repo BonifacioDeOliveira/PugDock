@@ -70,7 +70,7 @@
       const improved = await ai.enrichNote(tab.content);
       await api.writeFile(tab.path, improved);
       replaceTabContent(tab.path, improved);
-      msgs.push({ role: "ai", text: `✨ Enriched **${tab.name}** — previous version stays in History.` });
+      msgs.push({ role: "ai", text: `✨ Enriched **${tab.name}**. The previous version stays in History.` });
     });
   }
 
@@ -132,7 +132,7 @@
       {#if msgs.length > 0}
         <button
           class="ghost new-chat"
-          title="Reset the conversation and start a new chat — current messages are discarded"
+          title="Reset the conversation and start a new chat. Current messages are discarded"
           onclick={() => (msgs = [])}
         >
           <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">

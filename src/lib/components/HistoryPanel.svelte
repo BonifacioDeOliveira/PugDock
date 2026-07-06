@@ -30,7 +30,7 @@
 </script>
 
 <div class="panel">
-  <h3>{forFile ? `History — ${forFile.split("/").pop()}` : "Workspace history"}</h3>
+  <h3>{forFile ? `History: ${forFile.split("/").pop()}` : "Workspace history"}</h3>
   <div class="list">
     {#each checkpoints as c (c.hash)}
       <button class="item" onclick={() => forFile && show(c.hash)}>

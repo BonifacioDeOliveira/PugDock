@@ -16,7 +16,7 @@ export interface ResolvedTheme {
 
 // ---- Built-in themes ----
 
-/** Compact palette spec — expanded into vars + token colors by mk(). */
+/** Compact palette spec - expanded into vars + token colors by mk(). */
 interface Palette {
   id: string;
   name: string;

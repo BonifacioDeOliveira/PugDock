@@ -59,7 +59,7 @@ export const app = $state({
   loaded: false,
   config: null as AppConfig | null,
   tree: [] as TreeEntry[],
-  /** Open documents (shared store — panes reference them by path). */
+  /** Open documents (shared store - panes reference them by path). */
   tabs: [] as Tab[],
   /** Editor groups, VSCode-style: each pane has its own tab strip. */
   panes: [{ paths: [], active: null }] as Pane[],
@@ -77,7 +77,7 @@ export function settings(): Settings & typeof DEFAULT_SETTINGS {
   return { ...DEFAULT_SETTINGS, ...(app.config?.settings ?? {}) };
 }
 
-/** GitHub sync is optional — enabled only when a repo was linked. */
+/** GitHub sync is optional - enabled only when a repo was linked. */
 export function syncEnabled(): boolean {
   return !!app.config?.repo_name && workspaceManaged();
 }

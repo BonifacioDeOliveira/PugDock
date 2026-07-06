@@ -136,7 +136,7 @@ pub async fn git_pull(app: tauri::AppHandle) -> Result<SyncStatus> {
         if merge.is_err() {
             let st = status(&root).await?;
             if !st.conflicts.is_empty() {
-                return Ok(st); // needs review — UI resolves per file
+                return Ok(st); // needs review - UI resolves per file
             }
             merge?;
         }
