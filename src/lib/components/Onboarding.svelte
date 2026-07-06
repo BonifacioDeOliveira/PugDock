@@ -1,6 +1,6 @@
 <script lang="ts">
   import { api, errorMessage, type DeviceCode, type GithubUser, type CreatedRepo } from "$lib/api";
-  import { app, saveSettings } from "$lib/state.svelte";
+  import { app, saveSettings, settings } from "$lib/state.svelte";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
   import { documentDir, join } from "@tauri-apps/api/path";
@@ -341,7 +341,9 @@
             <div><span class="dim">Sync</span> Off. Connect GitHub anytime in Settings</div>
           {/if}
         </div>
-        <button class="primary" onclick={() => (step = 4)}>Continue</button>
+        <button class="primary" onclick={() => (settings().aiEnabled ? finish() : (step = 4))}>
+          Continue
+        </button>
       {:else}
         <button class="primary" onclick={setUpWorkspace} disabled={settingUp || !folder}>
           {settingUp ? "Setting up workspace…" : "Use this folder"}
