@@ -332,56 +332,64 @@
         {/if}
         {#each msgs as m, i (i)}
           <div class="msg {m.role}">
-            {#if m.role === "ai"}
+            {#if m.role === "ai" && m.streaming && !m.text}
+              <div class="thinking">
+                <span class="throbber" aria-hidden="true"></span>
+                <span class="pulse">Thinking…</span>
+              </div>
+            {:else if m.role === "ai"}
               <!-- eslint-disable-next-line svelte/no-at-html-tags (sanitized in md()) -->
               <div class="msg-text md">{@html md(m.text)}</div>
             {:else}
               <div class="msg-text">{m.text}</div>
             {/if}
-            {#if m.role === "ai" && !m.text.startsWith("⚠️") && !m.text.startsWith("📝") && !m.text.startsWith("✨") && !m.text.startsWith("✍️")}
-              <div class="msg-actions">
-                <button
-                  class="ghost icon-action"
-                  aria-label="Insert into the open note"
-                  data-tip="Insert into the open note"
-                  data-tip-pos="top"
-                  data-tip-align="end"
-                  onclick={() => insertIntoNote(m.text)}
-                >
-                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                    <polyline points="14 2 14 8 20 8" />
-                    <line x1="12" y1="11" x2="12" y2="17" />
-                    <polyline points="9 14 12 17 15 14" />
-                  </svg>
-                </button>
-                <button
-                  class="ghost icon-action"
-                  aria-label="Save as a new note"
-                  data-tip="Save as a new note"
-                  data-tip-pos="top"
-                  data-tip-align="end"
-                  onclick={() => saveAsNote(m.text)}
-                >
-                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                    <polyline points="14 2 14 8 20 8" />
-                    <line x1="12" y1="18" x2="12" y2="12" />
-                    <line x1="9" y1="15" x2="15" y2="15" />
-                  </svg>
-                </button>
-              </div>
-            {/if}
-            {#if m.sources?.length}
-              <div class="sources">
-                {#each m.sources as s (s)}
-                  <button class="ghost" onclick={() => openFile(s)}>{s}</button>
-                {/each}
+            {@const actionable = m.role === "ai" && !m.streaming && !m.text.startsWith("⚠️") && !m.text.startsWith("📝") && !m.text.startsWith("✨") && !m.text.startsWith("✍️")}
+            {#if actionable || m.sources?.length}
+              <div class="msg-foot">
+                <div class="sources">
+                  {#each m.sources ?? [] as s (s)}
+                    <button class="ghost" onclick={() => openFile(s)}>{s}</button>
+                  {/each}
+                </div>
+                {#if actionable}
+                  <div class="msg-actions">
+                    <button
+                      class="ghost icon-action"
+                      aria-label="Insert into the open note"
+                      data-tip="Insert into the open note"
+                      data-tip-pos="top"
+                      data-tip-align="end"
+                      onclick={() => insertIntoNote(m.text)}
+                    >
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <polyline points="14 2 14 8 20 8" />
+                        <line x1="12" y1="11" x2="12" y2="17" />
+                        <polyline points="9 14 12 17 15 14" />
+                      </svg>
+                    </button>
+                    <button
+                      class="ghost icon-action"
+                      aria-label="Save as a new note"
+                      data-tip="Save as a new note"
+                      data-tip-pos="top"
+                      data-tip-align="end"
+                      onclick={() => saveAsNote(m.text)}
+                    >
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <polyline points="14 2 14 8 20 8" />
+                        <line x1="12" y1="18" x2="12" y2="12" />
+                        <line x1="9" y1="15" x2="15" y2="15" />
+                      </svg>
+                    </button>
+                  </div>
+                {/if}
               </div>
             {/if}
           </div>
         {/each}
-        {#if busy}
+        {#if busy && !msgs[msgs.length - 1]?.streaming}
           <div class="msg ai thinking">
             <span class="throbber" aria-hidden="true"></span>
             <span class="pulse">Thinking…</span>
@@ -661,15 +669,23 @@
       opacity: 0.45;
     }
   }
-  .msg-actions,
+  .msg-foot {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    margin-top: 6px;
+  }
   .sources {
+    flex: 1;
     display: flex;
     flex-wrap: wrap;
     gap: 4px;
-    margin-top: 6px;
+    min-width: 0;
   }
   .msg-actions {
-    justify-content: flex-end;
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
   }
   .msg-actions button,
   .sources button {
