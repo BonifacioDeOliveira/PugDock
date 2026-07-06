@@ -152,6 +152,7 @@ export const api = {
   exportDiagnostics: () => invoke<string>("export_diagnostics"),
   listFiles: (dir: string) => invoke<string[]>("list_files", { dir }),
   listTree: () => invoke<TreeEntry[]>("list_tree"),
+  listTreeAt: (root: string) => invoke<TreeEntry[]>("list_tree_at", { root }),
   readFile: (path: string) => invoke<string>("read_file", { path }),
   readFileBase64: (path: string) => invoke<string>("read_file_base64", { path }),
   writeFile: (path: string, content: string) => invoke<void>("write_file", { path, content }),

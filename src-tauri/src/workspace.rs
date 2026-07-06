@@ -349,6 +349,17 @@ pub fn remove_workspace(app: tauri::AppHandle, path: String) -> Result<AppConfig
     load_config(&app)
 }
 
+/// Tree of any configured workspace (the All view shows every workspace).
+#[tauri::command]
+pub fn list_tree_at(app: tauri::AppHandle, root: String) -> Result<Vec<TreeEntry>> {
+    let rootp = PathBuf::from(&root);
+    if !rootp.is_dir() {
+        return Ok(vec![]);
+    }
+    let skip = nested_workspace_paths(&app, &rootp);
+    read_tree(&rootp, &rootp, &skip)
+}
+
 #[tauri::command]
 pub fn list_tree(app: tauri::AppHandle) -> Result<Vec<TreeEntry>> {
     let root = workspace_root(&app)?;

@@ -9,12 +9,15 @@
     onmenu,
     onrename,
     onmove,
+    onopen,
   }: {
     entries: TreeEntry[];
     level?: number;
     onmenu: (e: MouseEvent, entry: TreeEntry) => void;
     onrename: (entry: TreeEntry) => void;
     onmove: (from: string, toDir: string) => void;
+    /** override for the All view: open in the owning workspace */
+    onopen?: (path: string) => void;
   } = $props();
 
   let open = $state<Record<string, boolean>>({});
@@ -45,9 +48,9 @@
         data-drop-dir={dirOf(entry)}
         draggable={!entry.is_dir}
         onclick={() => {
-          app.selectedDir = dirOf(entry);
+          if (!onopen) app.selectedDir = dirOf(entry);
           if (entry.is_dir) open[entry.path] = !open[entry.path];
-          else openFile(entry.path);
+          else (onopen ?? openFile)(entry.path);
         }}
         ondblclick={() => onrename(entry)}
         oncontextmenu={(e) => {
@@ -74,7 +77,7 @@
         {#if app.syncExcluded.includes(entry.path)}<span class="badge" data-tip="Local only, not synced">⛔</span>{/if}
       </button>
       {#if entry.is_dir && open[entry.path] && entry.children}
-        <FileTree entries={entry.children} level={level + 1} {onmenu} {onrename} {onmove} />
+        <FileTree entries={entry.children} level={level + 1} {onmenu} {onrename} {onmove} {onopen} />
       {/if}
     </li>
   {/each}

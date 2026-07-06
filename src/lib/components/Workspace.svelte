@@ -3,6 +3,7 @@
   import { checkForUpdate, type AvailableUpdate } from "$lib/update";
   import { app, openFile, openToSide, closeTab, closeEverywhere, focusTab, moveTabToPane, collapseSplit, renameOpenPath, refreshTree, settings, syncEnabled, workspaceManaged, colorFor, togglePin, saveSettings, toast, type Tab } from "$lib/state.svelte";
   import { switchWorkspace, addWorkspace, closeWorkspace } from "$lib/workspaces";
+  import type { WorkspaceEntry } from "$lib/api";
   import MarkdownView from "./MarkdownView.svelte";
   import { syncNow, startSync, pushOnExit, flushSaves } from "$lib/sync";
   import FileTree from "./FileTree.svelte";
@@ -10,7 +11,6 @@
   import PdfViewer from "./PdfViewer.svelte";
   import SearchPanel from "./SearchPanel.svelte";
   import SettingsPanel from "./SettingsPanel.svelte";
-  import AiPanel from "./AiPanel.svelte";
   import HistoryPanel from "./HistoryPanel.svelte";
   import ConflictDialog from "./ConflictDialog.svelte";
   import AiFab from "./AiFab.svelte";
@@ -65,6 +65,26 @@
     offline: "Offline. Will sync later",
     "needs-review": "Needs review",
   };
+
+  // --- All view: every workspace's tree, grouped and labeled ---
+  let allMode = $state(false);
+  let allTrees = $state<{ ws: WorkspaceEntry; tree: TreeEntry[] }[]>([]);
+
+  async function showAll() {
+    allMode = true;
+    const list = app.config?.workspaces ?? [];
+    allTrees = await Promise.all(
+      list.map(async (ws) => ({ ws, tree: await api.listTreeAt(ws.path).catch(() => []) })),
+    );
+  }
+
+  async function openFromAll(ws: WorkspaceEntry, path: string) {
+    allMode = false;
+    if (ws.path !== app.config?.workspace_path) {
+      await switchWorkspace(ws.path).catch((e) => toast(errorMessage(e)));
+    }
+    await openFile(path).catch((e) => toast(errorMessage(e)));
+  }
 
   // --- context menu ---
   let menu = $state<{ x: number; y: number; entry: TreeEntry | null } | null>(null);
@@ -277,15 +297,26 @@
   <header>
     <span class="brand">🐾</span>
     <div class="ws-tabs">
+      <div class="ws-tab" class:active={allMode} style="--ws-color: var(--text-dim)">
+        <button class="ws-name" onclick={showAll}>
+          <span class="ws-dot"></span>All
+        </button>
+      </div>
       {#each app.config?.workspaces ?? [] as ws (ws.path)}
-        {@const active = ws.path === app.config?.workspace_path}
+        {@const active = !allMode && ws.path === app.config?.workspace_path}
         {@const color = colorFor(ws.path)}
         <div
           class="ws-tab"
           class:active
           style="--ws-color: {color}"
         >
-          <button class="ws-name" onclick={() => switchWorkspace(ws.path).catch((e) => toast(errorMessage(e)))}>
+          <button
+            class="ws-name"
+            onclick={() => {
+              allMode = false;
+              switchWorkspace(ws.path).catch((e) => toast(errorMessage(e)));
+            }}
+          >
             <span class="ws-dot"></span>{ws.name}{ws.managed ? "" : " 📂"}
           </button>
           {#if active && (app.config?.workspaces.length ?? 0) > 1}
@@ -328,7 +359,6 @@
       </span>
     {/if}
     <button class="ghost" onclick={() => (app.panel = app.panel === "history" ? null : "history")}>History</button>
-    <button class="ghost" onclick={() => (app.panel = app.panel === "ai" ? null : "ai")}>AI</button>
     <button
       class="ghost settings-btn"
       aria-label="Settings"
@@ -374,6 +404,29 @@
           </svg>
         </button>
       </div>
+      {#if allMode}
+        <div class="aside-head"><span>All workspaces</span></div>
+        <div class="tree all-tree">
+          {#each allTrees as g (g.ws.path)}
+            <div class="all-group">
+              <div class="all-label" style="--ws-color: {colorFor(g.ws.path)}">
+                <span class="ws-dot"></span>{g.ws.name}
+              </div>
+              {#if g.tree.length}
+                <FileTree
+                  entries={g.tree}
+                  onmenu={() => {}}
+                  onrename={() => {}}
+                  onmove={() => {}}
+                  onopen={(path) => openFromAll(g.ws, path)}
+                />
+              {:else}
+                <p class="all-empty">Empty</p>
+              {/if}
+            </div>
+          {/each}
+        </div>
+      {:else}
       {#if app.pins.length}
         <div class="aside-head"><span>Pinned</span></div>
         <div class="quick-list">
@@ -385,7 +438,7 @@
       {#if app.recent.length > 1}
         <div class="aside-head"><span>Recent</span></div>
         <div class="quick-list">
-          {#each app.recent.slice(0, 5) as p (p)}
+          {#each app.recent.slice(0, 6) as p (p)}
             <button class="quick-item" onclick={() => openFile(p)} data-tip={p}>{p.split("/").pop()}</button>
           {/each}
         </div>
@@ -396,6 +449,7 @@
       <div class="tree">
         <FileTree entries={app.tree} onmenu={showMenu} onrename={(e) => menuActions.rename(e)} onmove={moveFile} />
       </div>
+      {/if}
     </aside>
 
     <main>
@@ -489,12 +543,11 @@
     {#if app.panel}
       <section class="side-panel">
         <div class="panel-head">
-          <span>{app.panel === "ai" ? "Ask PugDock" : app.panel[0].toUpperCase() + app.panel.slice(1)}</span>
+          <span>{app.panel[0].toUpperCase() + app.panel.slice(1)}</span>
           <button class="ghost" onclick={() => (app.panel = null)}>×</button>
         </div>
         {#if app.panel === "search"}<SearchPanel />
         {:else if app.panel === "settings"}<SettingsPanel />
-        {:else if app.panel === "ai"}<AiPanel />
         {:else if app.panel === "history"}<HistoryPanel />{/if}
       </section>
     {/if}
@@ -765,6 +818,36 @@
     display: flex;
     flex-direction: column;
     padding-bottom: 4px;
+    max-height: 138px; /* ~6 rows, then scroll */
+    overflow-y: auto;
+    flex: 0 0 auto;
+  }
+  .all-tree {
+    padding-top: 2px;
+  }
+  .all-group {
+    margin-bottom: 6px;
+  }
+  .all-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px 3px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .all-label .ws-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--ws-color);
+  }
+  .all-empty {
+    margin: 0;
+    padding: 0 14px 6px 26px;
+    font-size: 11px;
+    color: var(--text-dim);
   }
   .quick-item {
     background: none;

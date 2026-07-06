@@ -41,6 +41,7 @@ pub fn run() {
             workspace::export_diagnostics,
             workspace::list_files,
             workspace::list_tree,
+            workspace::list_tree_at,
             workspace::read_file,
             workspace::read_file_base64,
             workspace::write_file,

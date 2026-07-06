@@ -26,6 +26,15 @@ export interface Tab {
   version: number;
 }
 
+/** Reload every open text tab whose file changed on disk (agent edits). */
+export async function refreshOpenTabs() {
+  for (const t of app.tabs) {
+    if (t.kind !== "text") continue;
+    const disk = await api.readFile(t.path).catch(() => null);
+    if (disk !== null && disk !== t.content) replaceTabContent(t.path, disk);
+  }
+}
+
 /** Replace a tab's content from outside the editor and force it to re-render. */
 export function replaceTabContent(path: string, content: string) {
   const tab = app.tabs.find((t) => t.path === path);
@@ -74,7 +83,7 @@ export const app = $state({
   syncState: "synced" as SyncUiState,
   pendingChanges: 0,
   conflicts: [] as string[],
-  panel: null as null | "search" | "settings" | "ai" | "history",
+  panel: null as null | "search" | "settings" | "history",
   toast: null as string | null,
 });
 

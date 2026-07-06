@@ -67,9 +67,16 @@ fn claude_code_path() -> Option<std::path::PathBuf> {
 
 /// Run one prompt through Claude Code in headless print mode.
 async fn run_claude_code(model: Option<&str>, system: &str, prompt: &str) -> Result<String> {
+    run_claude_code_in(model, system, prompt, None).await
+}
+
+async fn run_claude_code_in(model: Option<&str>, system: &str, prompt: &str, cwd: Option<std::path::PathBuf>) -> Result<String> {
     use tokio::io::AsyncWriteExt;
     let claude = claude_code_path().ok_or(AppError::AiNotConnected)?;
     let mut cmd = tokio::process::Command::new(claude);
+    if let Some(dir) = cwd {
+        cmd.current_dir(dir);
+    }
     cmd.args(["-p", "--output-format", "text", "--setting-sources", ""])
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
@@ -190,6 +197,11 @@ pub async fn anthropic_run_stream(
 
     let claude = claude_code_path().ok_or(AppError::AiNotConnected)?;
     let mut cmd = tokio::process::Command::new(claude);
+    // Agent mode: the chat runs inside the workspace with file tools enabled,
+    // so it can create folders/notes, edit content, and organize for real.
+    if let Ok(root) = crate::workspace::workspace_root(&app) {
+        cmd.current_dir(root);
+    }
     cmd.args([
         "-p",
         "--output-format",
@@ -198,6 +210,10 @@ pub async fn anthropic_run_stream(
         "--verbose",
         "--setting-sources",
         "",
+        "--allowedTools",
+        "Read,Write,Edit,Glob,Grep,LS,Bash(mkdir:*)",
+        "--permission-mode",
+        "acceptEdits",
     ])
     .stdin(std::process::Stdio::piped())
     .stdout(std::process::Stdio::piped())
@@ -222,6 +238,28 @@ pub async fn anthropic_run_stream(
                 if let Some(text) = v["event"]["delta"]["text"].as_str() {
                     streamed.push_str(text);
                     let _ = app.emit("ai-delta", serde_json::json!({ "id": id, "text": text }));
+                }
+            }
+            Some("assistant") => {
+                if let Some(items) = v["message"]["content"].as_array() {
+                    for it in items {
+                        if it["type"] == "tool_use" {
+                            let name = it["name"].as_str().unwrap_or("tool");
+                            let target = it["input"]["file_path"]
+                                .as_str()
+                                .or(it["input"]["path"].as_str())
+                                .or(it["input"]["pattern"].as_str())
+                                .unwrap_or("");
+                            let label = match name {
+                                "Write" => format!("Writing {target}"),
+                                "Edit" => format!("Editing {target}"),
+                                "Read" => format!("Reading {target}"),
+                                "Glob" | "Grep" | "LS" => format!("Searching {target}"),
+                                other => format!("{other} {target}"),
+                            };
+                            let _ = app.emit("ai-activity", serde_json::json!({ "id": id, "text": label.trim() }));
+                        }
+                    }
                 }
             }
             Some("result") => {
@@ -350,12 +388,13 @@ pub async fn anthropic_models() -> Result<Vec<Model>> {
 /// resolved by the frontend, which owns the settings; this stays a thin,
 /// key-holding proxy so the API key never reaches the webview.
 #[tauri::command]
-pub async fn anthropic_run(model: String, system: String, prompt: String, max_tokens: Option<u32>) -> Result<String> {
+pub async fn anthropic_run(app: tauri::AppHandle, model: String, system: String, prompt: String, max_tokens: Option<u32>) -> Result<String> {
     // Claude Code first - same mechanism as claude-mem: the local CLI runs
     // the request under the user's existing Anthropic sign-in.
     if claude_code_path().is_some() {
         let m = (model != "auto").then_some(model.as_str());
-        return run_claude_code(m, &system, &prompt).await;
+        let cwd = crate::workspace::workspace_root(&app).ok();
+        return run_claude_code_in(m, &system, &prompt, cwd).await;
     }
     let auth = auth().await?;
     let req = client()
