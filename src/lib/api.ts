@@ -148,6 +148,7 @@ export const api = {
     invoke<AppConfig>("add_workspace", { path, managed }),
   setActiveWorkspace: (path: string) => invoke<AppConfig>("set_active_workspace", { path }),
   removeWorkspace: (path: string) => invoke<AppConfig>("remove_workspace", { path }),
+  moveWorkspace: (newPath: string) => invoke<AppConfig>("move_workspace", { newPath }),
   listTree: () => invoke<TreeEntry[]>("list_tree"),
   readFile: (path: string) => invoke<string>("read_file", { path }),
   readFileBase64: (path: string) => invoke<string>("read_file_base64", { path }),

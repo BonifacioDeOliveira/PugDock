@@ -293,6 +293,56 @@ pub fn set_active_workspace(app: tauri::AppHandle, path: String) -> Result<AppCo
     load_config(&app)
 }
 
+fn copy_dir(src: &Path, dst: &Path) -> Result<()> {
+    fs::create_dir_all(dst)?;
+    for e in fs::read_dir(src)? {
+        let e = e?;
+        let target = dst.join(e.file_name());
+        if e.path().is_dir() {
+            copy_dir(&e.path(), &target)?;
+        } else {
+            fs::copy(e.path(), target)?;
+        }
+    }
+    Ok(())
+}
+
+/// Move the active workspace (files, .git history, everything) to a new
+/// folder and repoint the config. Same-volume moves are a rename; across
+/// volumes it falls back to copy + delete.
+#[tauri::command]
+pub fn move_workspace(app: tauri::AppHandle, new_path: String) -> Result<AppConfig> {
+    let mut cfg = load_config(&app)?;
+    let old = cfg.workspace_path.clone().ok_or(AppError::NoWorkspace)?;
+    if old == new_path {
+        return load_config(&app);
+    }
+    let old_p = PathBuf::from(&old);
+    let new_p = PathBuf::from(&new_path);
+    if new_p.starts_with(&old_p) {
+        return Err(AppError::Other("The destination is inside the current workspace.".into()));
+    }
+    if new_p.exists() {
+        if fs::read_dir(&new_p)?.next().is_some() {
+            return Err(AppError::Other("The destination folder already exists and is not empty.".into()));
+        }
+        fs::remove_dir(&new_p)?; // empty dir would make rename fail on some platforms
+    }
+    if let Some(parent) = new_p.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    if fs::rename(&old_p, &new_p).is_err() {
+        copy_dir(&old_p, &new_p)?;
+        fs::remove_dir_all(&old_p)?;
+    }
+    if let Some(entry) = cfg.workspaces.iter_mut().find(|w| w.path == old) {
+        entry.path = new_path.clone();
+    }
+    cfg.workspace_path = Some(new_path);
+    save_config(&app, &cfg)?;
+    load_config(&app)
+}
+
 /// Remove a workspace tab from the list — never deletes any files.
 #[tauri::command]
 pub fn remove_workspace(app: tauri::AppHandle, path: String) -> Result<AppConfig> {

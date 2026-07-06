@@ -1,7 +1,7 @@
 <script lang="ts">
   import { api, errorMessage, type Model } from "$lib/api";
   import { checkForUpdate, type AvailableUpdate } from "$lib/update";
-  import { app, settings, saveSettings, toast } from "$lib/state.svelte";
+  import { app, settings, saveSettings, refreshTree, toast } from "$lib/state.svelte";
   import { clearModelCache } from "$lib/ai";
   import { themeState, BUILTIN_THEMES, applyTheme, refreshImportedThemes } from "$lib/theme.svelte";
   import { openUrl } from "@tauri-apps/plugin-opener";
@@ -110,6 +110,30 @@
     await saveSettings({ aiEnabled: false });
   }
 
+  let moving = $state(false);
+
+  async function moveWorkspace() {
+    const current = app.config?.workspace_path;
+    if (!current) return;
+    const name = current.split("/").pop() ?? "PugDock";
+    const picked = await openDialog({ directory: true, title: "Choose the new location" });
+    if (typeof picked !== "string") return;
+    const dest = `${picked}/${name}`;
+    if (dest === current) return;
+    if (!confirm(`Move the workspace?\n\nFrom: ${current}\nTo: ${dest}\n\nAll files and sync history move with it.`)) return;
+    moving = true;
+    try {
+      app.config = await api.moveWorkspace(dest);
+      await refreshTree();
+      api.rebuildIndex().catch(() => {});
+      toast(`Workspace moved to ${dest}`);
+    } catch (e) {
+      toast(errorMessage(e));
+    } finally {
+      moving = false;
+    }
+  }
+
   async function rebuild() {
     indexing = true;
     try {
@@ -183,6 +207,7 @@
     <div class="row"><span>Local folder</span><code>{app.config?.workspace_path}</code></div>
     <div class="btns">
       <button onclick={() => api.reveal("")}>Open local folder</button>
+      <button onclick={moveWorkspace} disabled={moving}>{moving ? "Moving…" : "Move workspace…"}</button>
       <button onclick={rebuild} disabled={indexing}>{indexing ? "Indexing workspace…" : "Rebuild search index"}</button>
     </div>
   </section>
