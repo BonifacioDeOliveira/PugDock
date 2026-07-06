@@ -166,3 +166,9 @@ code {
   right: 0;
   transform: none;
 }
+/* Start-aligned: for controls near the window's left edge */
+[data-tip][data-tip-align="start"]:hover::after {
+  left: 0;
+  right: auto;
+  transform: none;
+}

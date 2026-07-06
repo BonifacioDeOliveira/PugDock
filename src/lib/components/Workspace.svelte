@@ -128,13 +128,14 @@
     return entries.some((e) => e.path === path || (e.children ? treeHas(path, e.children) : false));
   }
 
-  const noteTargetDir = $derived(app.selectedDir || (workspaceManaged() ? "notes" : ""));
+  const noteTargetDir = $derived(app.selectedDir);
 
-  /** Big "New note" button: create instantly in the selected folder. */
+  /** Big "New note" button: create instantly in the selected folder (or the
+   *  workspace root). Notes need no extension. */
   async function quickNote() {
     const dir = noteTargetDir ? `${noteTargetDir}/` : "";
     for (let i = 1; i < 1000; i++) {
-      const path = `${dir}untitled${i === 1 ? "" : `-${i}`}.md`;
+      const path = `${dir}untitled${i === 1 ? "" : `-${i}`}`;
       if (!treeHas(path)) {
         await api.writeFile(path, "");
         await refreshTree();
@@ -428,7 +429,8 @@
       <div class="create-row">
         <button
           class="new-note"
-          data-tip={`Creates in ${noteTargetDir || "the workspace root"}/ (click a folder to change the target)`}
+          data-tip={`Creates in ${noteTargetDir ? `${noteTargetDir}/` : "the workspace root"} (click a folder to change the target)`}
+          data-tip-align="start"
           onclick={() => quickNote().catch((e) => toast(errorMessage(e)))}
         >
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
