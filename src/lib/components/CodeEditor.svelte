@@ -62,6 +62,16 @@
     };
   });
 
+  // Live mirror: when the same document is open in another group (or an
+  // external rewrite lands), reflect tab.content into this editor. The
+  // editor that produced the change is a no-op (doc already matches).
+  $effect(() => {
+    const content = tab.content;
+    if (view && view.state.doc.toString() !== content) {
+      view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: content } });
+    }
+  });
+
   // Live theme switching for already-open editors.
   $effect(() => {
     const theme = themeState.current;

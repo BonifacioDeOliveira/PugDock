@@ -1,7 +1,7 @@
 <script lang="ts">
   import { api, errorMessage, type TreeEntry } from "$lib/api";
   import { checkForUpdate, type AvailableUpdate } from "$lib/update";
-  import { app, openFile, openToSide, closeTab, focusTab, moveTabToPane, collapseSplit, renameOpenPath, refreshTree, settings, syncEnabled, workspaceManaged, colorFor, togglePin, saveSettings, toast, type Tab } from "$lib/state.svelte";
+  import { app, openFile, openToSide, closeTab, closeEverywhere, focusTab, moveTabToPane, copyTabToPane, collapseSplit, renameOpenPath, refreshTree, settings, syncEnabled, workspaceManaged, colorFor, togglePin, saveSettings, toast, type Tab } from "$lib/state.svelte";
   import { switchWorkspace, addWorkspace, closeWorkspace } from "$lib/workspaces";
   import MarkdownView from "./MarkdownView.svelte";
   import { syncNow, startSync, pushOnExit, flushSaves } from "$lib/sync";
@@ -178,7 +178,7 @@
       if (!ok) return;
       run(async () => {
         await api.deletePath(entry.path);
-        closeTab(entry.path);
+        closeEverywhere(entry.path);
         api.removeFromIndex(entry.path).catch(() => {});
       });
     },
@@ -439,7 +439,7 @@
                         <button class="tab-name" onclick={() => focusTab(pi, path)} ondblclick={() => renameTab(path)}>
                           {tab.dirty ? "● " : ""}{tab.name}
                         </button>
-                        <button class="tab-close" onclick={() => closeTab(path)}>×</button>
+                        <button class="tab-close" onclick={() => closeTab(path, pi)}>×</button>
                       </div>
                     {/if}
                   {/each}
@@ -459,7 +459,7 @@
                     <button
                       class="ghost"
                       data-tip="Move to the other group (⌘\)"
-                      onclick={() => moveTabToPane(paneTab.path, pi === 0 ? 1 : 0)}
+                      onclick={() => copyTabToPane(paneTab.path, pi === 0 ? 1 : 0)}
                     >
                       ⫽
                     </button>

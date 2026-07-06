@@ -202,29 +202,36 @@ export function focusTab(paneIndex: number, path: string) {
   mirror();
 }
 
+/** VSCode semantics: opening targets the FOCUSED group. The same file may
+ *  be open in several groups at once (editors mirror each other live). */
 export async function openFile(path: string) {
   await loadTab(path);
-  const already = app.panes.findIndex((p) => p.paths.includes(path));
-  if (already >= 0) {
-    focusTab(already, path);
-    return;
-  }
-  app.panes[app.focused].paths.push(path);
+  const pane = app.panes[app.focused];
+  if (!pane.paths.includes(path)) pane.paths.push(path);
   focusTab(app.focused, path);
   trackRecent(path);
 }
 
-/** Move (or open) a file into a target pane, creating the split as needed. */
+/** Duplicate a file into a target group (VSCode's "split editor"). */
+export async function copyTabToPane(path: string, target: number) {
+  await loadTab(path);
+  while (app.panes.length <= target) app.panes.push({ paths: [], active: null });
+  if (!app.panes[target].paths.includes(path)) app.panes[target].paths.push(path);
+  focusTab(target, path);
+}
+
+/** Move a tab between groups (drag & drop), creating the split as needed. */
 export async function moveTabToPane(path: string, target: number) {
   await loadTab(path);
   while (app.panes.length <= target) app.panes.push({ paths: [], active: null });
-  const src = app.panes.findIndex((p) => p.paths.includes(path));
+  const src = app.focused >= 0 && app.panes[app.focused]?.paths.includes(path)
+    ? app.focused
+    : app.panes.findIndex((p) => p.paths.includes(path));
   if (src === target) {
     focusTab(target, path);
     return;
   }
   if (src >= 0) removeFromPane(src, path);
-  // pane indexes may have shifted if a pane collapsed
   const t = Math.min(target, app.panes.length);
   while (app.panes.length <= t) app.panes.push({ paths: [], active: null });
   if (!app.panes[t].paths.includes(path)) app.panes[t].paths.push(path);
@@ -232,7 +239,7 @@ export async function moveTabToPane(path: string, target: number) {
 }
 
 export async function openToSide(path: string) {
-  await moveTabToPane(path, 1);
+  await copyTabToPane(path, 1);
 }
 
 /** Merge the right group back into the left one. */
@@ -261,14 +268,24 @@ function removeFromPane(paneIndex: number, path: string) {
   mirror();
 }
 
-export function closeTab(path: string) {
-  const paneIndex = app.panes.findIndex((p) => p.paths.includes(path));
-  if (paneIndex >= 0) removeFromPane(paneIndex, path);
+/** Close a tab in one group; the document stays while other groups use it. */
+export function closeTab(path: string, paneIndex?: number) {
+  const pi = paneIndex ?? (app.panes[app.focused]?.paths.includes(path)
+    ? app.focused
+    : app.panes.findIndex((p) => p.paths.includes(path)));
+  if (pi >= 0 && app.panes[pi]) removeFromPane(pi, path);
   if (!app.panes.some((p) => p.paths.includes(path))) {
     const i = app.tabs.findIndex((t) => t.path === path);
     if (i >= 0) app.tabs.splice(i, 1);
   }
   mirror();
+}
+
+/** Close a file everywhere (used when it is deleted). */
+export function closeEverywhere(path: string) {
+  while (app.panes.some((p) => p.paths.includes(path))) {
+    closeTab(path, app.panes.findIndex((p) => p.paths.includes(path)));
+  }
 }
 
 /** Keep pane references and the mirror consistent when a file is renamed. */
