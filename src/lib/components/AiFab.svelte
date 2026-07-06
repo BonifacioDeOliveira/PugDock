@@ -205,7 +205,7 @@
       {#if msgs.length > 0}
         <button
           class="ghost new-chat"
-          data-tip="Reset the conversation and start a new chat. Current messages are discarded"
+          data-tip="Reset the conversation and start a new chat. Current messages are discarded" data-tip-align="end"
           onclick={() => (msgs = [])}
         >
           <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -216,7 +216,7 @@
           New chat
         </button>
       {/if}
-      <button class="ghost" onclick={() => (open = false)} data-tip="Close (keeps the conversation)">×</button>
+      <button class="ghost" onclick={() => (open = false)} data-tip="Close (keeps the conversation)" data-tip-align="end">×</button>
     </div>
 
     {#if !enabled}
@@ -247,6 +247,8 @@
                   class="ghost icon-action"
                   aria-label="Insert into the open note"
                   data-tip="Insert into the open note"
+                  data-tip-pos="top"
+                  data-tip-align="end"
                   onclick={() => insertIntoNote(m.text)}
                 >
                   <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -260,6 +262,8 @@
                   class="ghost icon-action"
                   aria-label="Save as a new note"
                   data-tip="Save as a new note"
+                  data-tip-pos="top"
+                  data-tip-align="end"
                   onclick={() => saveAsNote(m.text)}
                 >
                   <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -280,7 +284,12 @@
             {/if}
           </div>
         {/each}
-        {#if busy}<div class="msg ai"><div class="msg-text pulse">Thinking…</div></div>{/if}
+        {#if busy}
+          <div class="msg ai thinking">
+            <span class="throbber" aria-hidden="true"></span>
+            <span class="pulse">Thinking…</span>
+          </div>
+        {/if}
       </div>
 
       <div class="chips">
@@ -319,7 +328,7 @@
   </div>
 {/if}
 
-<button class="ai-fab" class:open onclick={() => (open = !open)} data-tip="PugDock AI" data-tip-pos="top">
+<button class="ai-fab" class:open onclick={() => (open = !open)} data-tip="PugDock AI" data-tip-pos="top" data-tip-align="end">
   {#if open}
     ×
   {:else}
@@ -473,6 +482,25 @@
     font-size: 1.05em;
     margin: 0.5em 0 0.25em;
   }
+  .thinking {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .throbber {
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    flex-shrink: 0;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
   .pulse {
     color: var(--text-dim);
     animation: pulse 1.2s ease-in-out infinite;
@@ -488,6 +516,9 @@
     flex-wrap: wrap;
     gap: 4px;
     margin-top: 6px;
+  }
+  .msg-actions {
+    justify-content: flex-end;
   }
   .msg-actions button,
   .sources button {

@@ -462,13 +462,6 @@
                         {paneTab.preview ? "✏️ Edit" : "👁 Preview"}
                       </button>
                     {/if}
-                    <button
-                      class="ghost"
-                      data-tip="Move to the other group (⌘\)"
-                      onclick={() => copyTabToPane(paneTab.path, pi === 0 ? 1 : 0)}
-                    >
-                      ⫽
-                    </button>
                   </div>
                 {/if}
               </div>
