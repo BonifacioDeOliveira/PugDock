@@ -386,7 +386,6 @@
       {/if}
       <div class="aside-head">
         <span>Files</span>
-        <button class="ghost" data-tip="New file" onclick={() => menuActions.newFile(null)}>＋</button>
       </div>
       <div class="tree">
         <FileTree entries={app.tree} onmenu={showMenu} onrename={(e) => menuActions.rename(e)} onmove={moveFile} />
