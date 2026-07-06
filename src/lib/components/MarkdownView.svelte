@@ -1,12 +1,23 @@
 <script lang="ts">
   import { marked } from "marked";
   import DOMPurify from "dompurify";
-  import type { Tab } from "$lib/state.svelte";
+  import { convertFileSrc } from "@tauri-apps/api/core";
+  import { app, type Tab } from "$lib/state.svelte";
 
   let { tab }: { tab: Tab } = $props();
 
+  /** Workspace-relative image paths render through the asset protocol. */
+  function fixLocalImages(rendered: string): string {
+    const root = app.config?.workspace_path;
+    if (!root) return rendered;
+    return rendered.replace(/(<img[^>]+src=")([^"]+)(")/g, (m, pre, src, post) => {
+      if (/^(https?:|data:|asset:|blob:)/.test(src)) return m;
+      return pre + convertFileSrc(`${root}/${decodeURIComponent(src)}`) + post;
+    });
+  }
+
   // Sanitized: notes sync from GitHub, so treat file content as untrusted.
-  const html = $derived(DOMPurify.sanitize(marked.parse(tab.content, { async: false })));
+  const html = $derived(fixLocalImages(DOMPurify.sanitize(marked.parse(tab.content, { async: false }))));
 </script>
 
 <div class="md-view">
