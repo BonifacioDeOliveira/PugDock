@@ -1,7 +1,7 @@
 <script lang="ts">
   import { api, errorMessage, type TreeEntry } from "$lib/api";
   import { checkForUpdate, type AvailableUpdate } from "$lib/update";
-  import { app, openFile, openToSide, closeTab, closeEverywhere, focusTab, moveTabToPane, collapseSplit, renameOpenPath, refreshTree, settings, syncEnabled, workspaceManaged, colorFor, togglePin, saveSettings, isNoteFile, toast, type Tab } from "$lib/state.svelte";
+  import { app, openFile, openToSide, closeTab, closeEverywhere, focusTab, moveTabToPane, collapseSplit, renameOpenPath, refreshTree, settings, syncEnabled, workspaceManaged, colorFor, togglePin, saveSettings, isNoteFile, displayName, toast, type Tab } from "$lib/state.svelte";
   import { switchWorkspace, addWorkspace, closeWorkspace } from "$lib/workspaces";
   import type { WorkspaceEntry } from "$lib/api";
   import MarkdownView from "./MarkdownView.svelte";
@@ -130,12 +130,12 @@
 
   const noteTargetDir = $derived(app.selectedDir);
 
-  /** Big "New note" button: create instantly in the selected folder (or the
-   *  workspace root). Notes need no extension. */
+  /** Big "New note" button: creates untitled.md in the selected folder (or
+   *  the workspace root); the UI hides the extension everywhere. */
   async function quickNote() {
     const dir = noteTargetDir ? `${noteTargetDir}/` : "";
     for (let i = 1; i < 1000; i++) {
-      const path = `${dir}untitled${i === 1 ? "" : `-${i}`}`;
+      const path = `${dir}untitled${i === 1 ? "" : `-${i}`}.md`;
       if (!treeHas(path)) {
         await api.writeFile(path, "");
         await refreshTree();
@@ -476,7 +476,7 @@
         <div class="aside-head"><span>Pinned</span></div>
         <div class="quick-list">
           {#each app.pins as p (p)}
-            <button class="quick-item" onclick={() => openFile(p)} data-tip={p}>📌 {p.split("/").pop()}</button>
+            <button class="quick-item" onclick={() => openFile(p)} data-tip={p}>📌 {displayName(p)}</button>
           {/each}
         </div>
       {/if}
@@ -484,7 +484,7 @@
         <div class="aside-head"><span>Recent</span></div>
         <div class="quick-list">
           {#each app.recent.slice(0, 6) as p (p)}
-            <button class="quick-item" onclick={() => openFile(p)} data-tip={p}>{p.split("/").pop()}</button>
+            <button class="quick-item" onclick={() => openFile(p)} data-tip={p}>{displayName(p)}</button>
           {/each}
         </div>
       {/if}
@@ -542,7 +542,7 @@
                         }}
                       >
                         <button class="tab-name" onclick={() => focusTab(pi, path)} ondblclick={() => renameTab(path)}>
-                          {tab.dirty ? "● " : ""}{tab.name}
+                          {tab.dirty ? "● " : ""}{displayName(tab.name)}
                         </button>
                         <button class="tab-close" onclick={() => closeTab(path, pi)}>×</button>
                       </div>

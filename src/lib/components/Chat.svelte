@@ -1,6 +1,6 @@
 <script lang="ts">
   import { api, errorMessage, type Model } from "$lib/api";
-  import { app, openFile, refreshTree, settings, saveSettings, replaceTabContent, toast } from "$lib/state.svelte";
+  import { app, openFile, refreshTree, settings, saveSettings, replaceTabContent, displayName, toast } from "$lib/state.svelte";
   import * as ai from "$lib/ai";
   import { chat, chatTitle, loadConversations, openConversation, startNewChat, deleteConversation, askStreaming } from "$lib/chat.svelte";
   import { marked } from "marked";
@@ -321,7 +321,7 @@
       <div class="input-row">
         {#if activeIsNote && activeTab}
           <span class="seeing" data-tip="The chat reads this note live, including unsaved edits" data-tip-pos="top">
-            👁 {activeTab.name}
+            👁 {displayName(activeTab.name)}
           </span>
         {/if}
         <select

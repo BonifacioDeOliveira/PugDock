@@ -185,6 +185,13 @@ export function isNoteFile(path: string): boolean {
   return /\.(md|markdown|txt)$/i.test(name);
 }
 
+/** Notes are .md on disk (GitHub renders them; every tool understands
+ *  them) but the UI never shows the extension. */
+export function displayName(nameOrPath: string): string {
+  const n = nameOrPath.split("/").pop() ?? nameOrPath;
+  return n.replace(/\.md$/i, "");
+}
+
 export function isTextFile(path: string): boolean {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
   return TEXT_EXTS.has(ext) || !path.includes(".");

@@ -1,6 +1,6 @@
 <script lang="ts">
   import FileTree from "./FileTree.svelte";
-  import { app, openFile } from "$lib/state.svelte";
+  import { app, openFile, displayName } from "$lib/state.svelte";
   import type { TreeEntry } from "$lib/api";
 
   let {
@@ -72,7 +72,7 @@
         ondrop={(e) => onDrop(e, entry)}
       >
         <span class="chevron">{entry.is_dir ? (open[entry.path] ? "▾" : "▸") : ""}</span>
-        <span class="name" class:dim={entry.is_dir}>{entry.name}</span>
+        <span class="name" class:dim={entry.is_dir}>{entry.is_dir ? entry.name : displayName(entry.name)}</span>
         {#if app.pins.includes(entry.path)}<span class="badge" data-tip="Pinned">📌</span>{/if}
         {#if app.syncExcluded.includes(entry.path)}<span class="badge" data-tip="Local only, not synced">⛔</span>{/if}
       </button>
