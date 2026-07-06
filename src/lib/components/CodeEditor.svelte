@@ -1,9 +1,9 @@
 <script lang="ts">
   import { EditorView, basicSetup } from "codemirror";
   import { EditorState, Compartment } from "@codemirror/state";
-  import { oneDark } from "@codemirror/theme-one-dark";
   import { languages } from "@codemirror/language-data";
   import { scheduleSave } from "$lib/sync";
+  import { themeState, editorExtensions } from "$lib/theme.svelte";
   import type { Tab } from "$lib/state.svelte";
 
   let { tab }: { tab: Tab } = $props();
@@ -11,6 +11,7 @@
   let host: HTMLDivElement;
   let view: EditorView | null = null;
   const langCompartment = new Compartment();
+  const themeCompartment = new Compartment();
 
   const sensitive = $derived(
     /^\.env($|\.)(?!.*example)|\.(pem|key)$|^id_rsa|^id_ed25519|^credentials\.|^secrets\./.test(tab.name),
@@ -30,7 +31,7 @@
       doc: tab.content,
       extensions: [
         basicSetup,
-        oneDark,
+        themeCompartment.of(editorExtensions(themeState.current)),
         EditorView.lineWrapping,
         EditorState.readOnly.of(sensitive),
         langCompartment.of([]),
@@ -55,6 +56,12 @@
       view?.destroy();
       view = null;
     };
+  });
+
+  // Live theme switching for already-open editors.
+  $effect(() => {
+    const theme = themeState.current;
+    view?.dispatch({ effects: themeCompartment.reconfigure(editorExtensions(theme)) });
   });
 </script>
 

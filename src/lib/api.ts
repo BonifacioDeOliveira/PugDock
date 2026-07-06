@@ -29,6 +29,7 @@ export interface Settings {
   aiExcluded?: string[];
   autoCheckUpdates?: boolean;
   includePrereleases?: boolean;
+  themeId?: string;
   repoHtmlUrl?: string;
   githubLogin?: string;
 }
@@ -91,6 +92,22 @@ export interface UpdateInfo {
   latest: string;
   notes: string;
   url: string;
+}
+
+export interface ThemeMeta {
+  id: string;
+  name: string;
+  dark: boolean;
+}
+
+export interface TokenColor {
+  scope?: string | string[];
+  settings?: { foreground?: string; fontStyle?: string };
+}
+
+export interface ImportedTheme extends ThemeMeta {
+  colors: Record<string, string>;
+  tokenColors: TokenColor[];
 }
 
 export interface FolderInspection {
@@ -171,6 +188,12 @@ export const api = {
   anthropicModels: () => invoke<Model[]>("anthropic_models"),
   anthropicRun: (model: string, system: string, prompt: string, maxTokens?: number) =>
     invoke<string>("anthropic_run", { model, system, prompt, maxTokens: maxTokens ?? null }),
+
+  // themes
+  importVsixTheme: (vsixPath: string) => invoke<ThemeMeta[]>("import_vsix_theme", { vsixPath }),
+  listImportedThemes: () => invoke<ThemeMeta[]>("list_imported_themes"),
+  getImportedTheme: (id: string) => invoke<ImportedTheme>("get_imported_theme", { id }),
+  deleteImportedTheme: (id: string) => invoke<void>("delete_imported_theme", { id }),
 
   // updates
   checkUpdates: (includePrerelease?: boolean) =>

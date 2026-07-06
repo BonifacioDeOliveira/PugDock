@@ -3,6 +3,7 @@ mod git_sync;
 mod integrations;
 mod search;
 mod secrets;
+mod theme;
 mod update;
 mod workspace;
 
@@ -71,6 +72,11 @@ pub fn run() {
             integrations::anthropic::anthropic_connect,
             integrations::anthropic::anthropic_models,
             integrations::anthropic::anthropic_run,
+            // themes
+            theme::import_vsix_theme,
+            theme::list_imported_themes,
+            theme::get_imported_theme,
+            theme::delete_imported_theme,
             // updates
             update::check_updates,
         ])

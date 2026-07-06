@@ -2,7 +2,9 @@
   import { api, errorMessage, type Model, type UpdateInfo } from "$lib/api";
   import { app, settings, saveSettings, toast } from "$lib/state.svelte";
   import { clearModelCache } from "$lib/ai";
+  import { themeState, BUILTIN_THEMES, applyTheme, refreshImportedThemes } from "$lib/theme.svelte";
   import { openUrl } from "@tauri-apps/plugin-opener";
+  import { open as openDialog } from "@tauri-apps/plugin-dialog";
 
   const s = $derived(settings());
 
@@ -18,7 +20,37 @@
       anthropicConnected = v;
       if (v) api.anthropicModels().then((m) => (models = m)).catch(() => {});
     });
+    refreshImportedThemes();
   });
+
+  async function importTheme() {
+    error = "";
+    const picked = await openDialog({
+      title: "Import VSCode theme",
+      filters: [{ name: "VSCode extension", extensions: ["vsix"] }],
+    });
+    if (typeof picked !== "string") return;
+    try {
+      const imported = await api.importVsixTheme(picked);
+      await refreshImportedThemes();
+      await applyTheme(`custom:${imported[0].id}`);
+      toast(
+        imported.length === 1
+          ? `Theme "${imported[0].name}" imported and applied`
+          : `${imported.length} themes imported — "${imported[0].name}" applied`,
+      );
+    } catch (e) {
+      error = errorMessage(e);
+    }
+  }
+
+  async function deleteTheme() {
+    const id = themeState.current.id;
+    if (!id.startsWith("custom:")) return;
+    await api.deleteImportedTheme(id.replace("custom:", ""));
+    await refreshImportedThemes();
+    await applyTheme("builtin:dark");
+  }
 
   async function connectKey() {
     error = "";
@@ -95,6 +127,37 @@
       <button onclick={() => api.reveal("")}>Open local folder</button>
       <button onclick={rebuild} disabled={indexing}>{indexing ? "Indexing workspace…" : "Rebuild search index"}</button>
     </div>
+  </section>
+
+  <section>
+    <h3>Appearance</h3>
+    <label class="row">
+      <span>Theme</span>
+      <select value={themeState.current.id} onchange={(e) => applyTheme(e.currentTarget.value)}>
+        <optgroup label="Built-in">
+          {#each BUILTIN_THEMES as theme (theme.id)}
+            <option value={theme.id}>{theme.name}</option>
+          {/each}
+        </optgroup>
+        {#if themeState.imported.length}
+          <optgroup label="Imported">
+            {#each themeState.imported as theme (theme.id)}
+              <option value={`custom:${theme.id}`}>{theme.name}</option>
+            {/each}
+          </optgroup>
+        {/if}
+      </select>
+    </label>
+    <div class="btns">
+      <button onclick={importTheme}>Import VSCode theme (.vsix)</button>
+      {#if themeState.current.id.startsWith("custom:")}
+        <button onclick={deleteTheme}>Remove current theme</button>
+      {/if}
+    </div>
+    <p class="dim">
+      Any VSCode color theme works: download the extension's .vsix from the Marketplace
+      or open-vsx.org and import it here.
+    </p>
   </section>
 
   <section>

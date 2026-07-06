@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api } from "$lib/api";
-  import { app, refreshTree } from "$lib/state.svelte";
+  import { app, refreshTree, settings } from "$lib/state.svelte";
+  import { applyTheme } from "$lib/theme.svelte";
   import Onboarding from "$lib/components/Onboarding.svelte";
   import Workspace from "$lib/components/Workspace.svelte";
 
@@ -10,6 +11,7 @@
   $effect(() => {
     (async () => {
       app.config = await api.getConfig();
+      await applyTheme(settings().themeId ?? "builtin:dark", false).catch(() => {});
       needsOnboarding = !app.config.onboarding_done || !app.config.workspace_path;
       if (!needsOnboarding) await refreshTree().catch(() => {});
       ready = true;
