@@ -202,7 +202,7 @@ export const api = {
 
   // anthropic
   anthropicConnect: (apiKey: string) => invoke<Model[]>("anthropic_connect", { apiKey }),
-  anthropicAuthStatus: () => invoke<"key" | "oauth" | "ant" | "none">("anthropic_auth_status"),
+  anthropicAuthStatus: () => invoke<"claude" | "key" | "oauth" | "ant" | "none">("anthropic_auth_status"),
   anthropicInstallCli: () => invoke<void>("anthropic_install_cli"),
   anthropicOauthLogin: () => invoke<Model[]>("anthropic_oauth_login"),
   anthropicModels: () => invoke<Model[]>("anthropic_models"),

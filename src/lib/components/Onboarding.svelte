@@ -196,7 +196,7 @@
   // --- Step 4: optional AI ---
   let connectingAi = $state(false);
   let aiStep = $state<string | null>(null);
-  let anthropicAuth = $state<"key" | "oauth" | "ant" | "none">("none");
+  let anthropicAuth = $state<"claude" | "key" | "oauth" | "ant" | "none">("none");
 
   $effect(() => {
     if (step === 4) {
@@ -214,13 +214,18 @@
     error = "";
     connectingAi = true;
     try {
+      if (anthropicAuth === "claude" || anthropicAuth === "key") {
+        await saveSettings({ aiEnabled: true, model: "auto" });
+        finish();
+        return;
+      }
       if (anthropicAuth === "none") {
         aiStep = "Setting up (one time)…";
         await api.anthropicInstallCli();
         anthropicAuth = "ant";
       }
       aiStep = "Waiting for browser sign-in…";
-      if (anthropicAuth !== "oauth" && anthropicAuth !== "key") {
+      if (anthropicAuth !== "oauth") {
         await api.anthropicOauthLogin();
       }
       await saveSettings({ aiEnabled: true, model: "auto" });
@@ -343,11 +348,12 @@
         summarize and enrich your workspace using your own Anthropic API key.
       </p>
       <button class="primary" onclick={anthropicOauth} disabled={connectingAi}>
-        {aiStep ?? "Sign in with Anthropic"}
+        {aiStep ?? (anthropicAuth === "claude" ? "Enable AI — uses your Claude Code sign-in" : "Sign in with Anthropic")}
       </button>
       <p class="dim">
-        Opens your browser to sign in with your Anthropic account — nothing to copy.
-        PugDock sets up what it needs automatically.
+        {anthropicAuth === "claude"
+          ? "Claude Code is installed and signed in with your Anthropic account — nothing else to set up."
+          : "Opens your browser to sign in with your Anthropic account — nothing to copy. PugDock sets up what it needs automatically."}
       </p>
       <div class="code-row">
         <button onclick={finish} disabled={connectingAi}>Skip for now</button>

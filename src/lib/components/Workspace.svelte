@@ -250,9 +250,24 @@
 
   <div class="body">
     <aside oncontextmenu={(e) => { e.preventDefault(); showMenu(e, null); }}>
-      <button class="new-note" onclick={() => quickNote().catch((e) => toast(errorMessage(e)))}>
-        ＋ New note
-      </button>
+      <div class="create-row">
+        <button class="new-note" onclick={() => quickNote().catch((e) => toast(errorMessage(e)))}>
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+            <line x1="12" y1="18" x2="12" y2="12" />
+            <line x1="9" y1="15" x2="15" y2="15" />
+          </svg>
+          New note
+        </button>
+        <button class="new-folder" title="New folder" onclick={() => menuActions.newFolder(null)}>
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+            <line x1="12" y1="11" x2="12" y2="17" />
+            <line x1="9" y1="14" x2="15" y2="14" />
+          </svg>
+        </button>
+      </div>
       <div class="aside-head">
         <span>Files</span>
         <button class="ghost" title="New file" onclick={() => menuActions.newFile(null)}>＋</button>
@@ -549,8 +564,17 @@
     display: flex;
     flex-direction: column;
   }
-  .new-note {
+  .create-row {
+    display: flex;
+    gap: 6px;
     margin: 10px 12px 2px;
+  }
+  .new-note {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
     padding: 9px 12px;
     font-size: 13px;
     font-weight: 600;
@@ -558,9 +582,27 @@
     border: none;
     border-radius: 8px;
     color: #10121a;
+    transition: filter 0.12s ease, transform 0.12s ease;
   }
   .new-note:hover {
     filter: brightness(1.1);
+    transform: translateY(-1px);
+  }
+  .new-folder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    padding: 0;
+    background: var(--bg-hover);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text-dim);
+    transition: color 0.12s ease, transform 0.12s ease;
+  }
+  .new-folder:hover {
+    color: var(--text);
+    transform: translateY(-1px);
   }
   .aside-head {
     display: flex;

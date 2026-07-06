@@ -28,26 +28,75 @@ fn apply_auth(req: reqwest::RequestBuilder, auth: &Auth) -> reqwest::RequestBuil
     }
 }
 
-/// Locate the official Anthropic CLI. GUI apps get a minimal PATH on macOS,
-/// so check the common install locations explicitly.
-fn ant_path() -> Option<std::path::PathBuf> {
-    let candidates = [
-        "/opt/homebrew/bin/ant",
-        "/usr/local/bin/ant",
-        "/usr/bin/ant",
-    ];
+/// Find a binary by name: common install locations first (GUI apps get a
+/// minimal PATH on macOS and Linux), then PATH. Cross-platform.
+fn find_bin(name: &str, extra: &[String]) -> Option<std::path::PathBuf> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let mut candidates: Vec<String> = extra.to_vec();
+    candidates.extend([
+        format!("/opt/homebrew/bin/{name}"),
+        format!("/usr/local/bin/{name}"),
+        format!("{home}/.local/bin/{name}"),
+        format!("/home/linuxbrew/.linuxbrew/bin/{name}"),
+        format!("/usr/bin/{name}"),
+    ]);
     for c in candidates {
         let p = std::path::PathBuf::from(c);
         if p.exists() {
             return Some(p);
         }
     }
-    // fall back to PATH
     std::env::var_os("PATH").and_then(|paths| {
         std::env::split_paths(&paths)
-            .map(|d| d.join("ant"))
+            .map(|d| d.join(name))
             .find(|p| p.exists())
     })
+}
+
+fn ant_path() -> Option<std::path::PathBuf> {
+    find_bin("ant", &[])
+}
+
+/// The Claude Code CLI — the primary AI provider, exactly like claude-mem:
+/// it authenticates via the user's existing Claude Code sign-in (their
+/// Anthropic account), so PugDock needs no key and no extra login.
+fn claude_code_path() -> Option<std::path::PathBuf> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    find_bin("claude", &[format!("{home}/.claude/local/claude")])
+}
+
+/// Run one prompt through Claude Code in headless print mode.
+async fn run_claude_code(model: Option<&str>, system: &str, prompt: &str) -> Result<String> {
+    use tokio::io::AsyncWriteExt;
+    let claude = claude_code_path().ok_or(AppError::AiNotConnected)?;
+    let mut cmd = tokio::process::Command::new(claude);
+    cmd.args(["-p", "--output-format", "text"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    if let Some(m) = model {
+        cmd.args(["--model", m]);
+    }
+    let mut child = cmd.spawn().map_err(|e| AppError::Other(e.to_string()))?;
+    let full = format!("<instructions>\n{system}\n</instructions>\n\n{prompt}");
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(full.as_bytes()).await.map_err(|e| AppError::Other(e.to_string()))?;
+        drop(stdin);
+    }
+    let out = child.wait_with_output().await.map_err(|e| AppError::Other(e.to_string()))?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr);
+        if err.to_lowercase().contains("log in") || err.to_lowercase().contains("login") || err.to_lowercase().contains("auth") {
+            return Err(AppError::Other(
+                "Claude Code is not signed in. Open Claude Code, run /login, then try again.".into(),
+            ));
+        }
+        return Err(AppError::Other(format!(
+            "Claude Code error: {}",
+            err.lines().last().unwrap_or("unknown")
+        )));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
 /// Fresh OAuth access token from the `ant` CLI, if the user has logged in
@@ -109,10 +158,13 @@ pub async fn anthropic_connect(api_key: String) -> Result<Vec<Model>> {
 }
 
 /// Current auth situation, for the UI to pick the right connect flow:
-/// "key" | "oauth" (logged in via Anthropic account) | "ant" (CLI installed,
-/// not logged in) | "none" (no CLI, no key).
+/// "claude" (Claude Code installed — preferred, like claude-mem) | "key" |
+/// "oauth" (ant CLI profile) | "ant" (CLI installed, not logged in) | "none".
 #[tauri::command]
 pub async fn anthropic_auth_status() -> Result<String> {
+    if claude_code_path().is_some() {
+        return Ok("claude".into());
+    }
     if secrets::get(secrets::ANTHROPIC_KEY)?.is_some() {
         return Ok("key".into());
     }
@@ -132,13 +184,9 @@ pub async fn anthropic_install_cli() -> Result<()> {
     if ant_path().is_some() {
         return Ok(());
     }
-    let brew = ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"]
-        .iter()
-        .map(std::path::PathBuf::from)
-        .find(|p| p.exists())
-        .ok_or_else(|| AppError::Other(
-            "Homebrew is required to set up Anthropic sign-in. Install it from https://brew.sh and try again.".into(),
-        ))?;
+    let brew = find_bin("brew", &[]).ok_or_else(|| AppError::Other(
+        "Homebrew is required to set up Anthropic sign-in. Install it from https://brew.sh and try again.".into(),
+    ))?;
     let out = tokio::process::Command::new(brew)
         .args(["install", "anthropics/tap/ant"])
         .output()
@@ -151,13 +199,18 @@ pub async fn anthropic_install_cli() -> Result<()> {
             err.lines().last().unwrap_or("unknown error")
         )));
     }
-    // macOS quarantine on freshly downloaded brew binaries
     if let Some(p) = ant_path() {
-        let _ = tokio::process::Command::new("xattr")
-            .args(["-d", "com.apple.quarantine"])
-            .arg(&p)
-            .output()
-            .await;
+        // macOS quarantine on freshly downloaded brew binaries
+        #[cfg(target_os = "macos")]
+        {
+            let _ = tokio::process::Command::new("xattr")
+                .args(["-d", "com.apple.quarantine"])
+                .arg(&p)
+                .output()
+                .await;
+        }
+        #[cfg(not(target_os = "macos"))]
+        let _ = p;
         Ok(())
     } else {
         Err(AppError::Other("Install finished but the Anthropic CLI was not found.".into()))
@@ -188,7 +241,22 @@ pub async fn anthropic_oauth_login() -> Result<Vec<Model>> {
 
 #[tauri::command]
 pub async fn anthropic_models() -> Result<Vec<Model>> {
-    list_models(&auth().await?).await
+    // With an API key or OAuth token we can list live; via Claude Code we
+    // offer the current well-known models (the CLI has no list command).
+    if let Ok(a) = auth().await {
+        if let Ok(m) = list_models(&a).await {
+            return Ok(m);
+        }
+    }
+    if claude_code_path().is_some() {
+        return Ok(vec![
+            Model { id: "claude-opus-4-8".into(), display_name: "Claude Opus 4.8".into() },
+            Model { id: "claude-sonnet-5".into(), display_name: "Claude Sonnet 5".into() },
+            Model { id: "claude-sonnet-4-6".into(), display_name: "Claude Sonnet 4.6".into() },
+            Model { id: "claude-haiku-4-5".into(), display_name: "Claude Haiku 4.5".into() },
+        ]);
+    }
+    Err(AppError::AiNotConnected)
 }
 
 /// Run one AI task. Model selection (Auto/Fast/Balanced/Deep/Custom) is
@@ -196,6 +264,12 @@ pub async fn anthropic_models() -> Result<Vec<Model>> {
 /// key-holding proxy so the API key never reaches the webview.
 #[tauri::command]
 pub async fn anthropic_run(model: String, system: String, prompt: String, max_tokens: Option<u32>) -> Result<String> {
+    // Claude Code first — same mechanism as claude-mem: the local CLI runs
+    // the request under the user's existing Anthropic sign-in.
+    if claude_code_path().is_some() {
+        let m = (model != "auto").then_some(model.as_str());
+        return run_claude_code(m, &system, &prompt).await;
+    }
     let auth = auth().await?;
     let req = client()
         .post(format!("{API}/messages"))

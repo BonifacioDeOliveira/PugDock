@@ -9,19 +9,19 @@
   const s = $derived(settings());
 
   let models = $state<Model[]>([]);
-  let anthropicAuth = $state<"key" | "oauth" | "ant" | "none">("none");
+  let anthropicAuth = $state<"claude" | "key" | "oauth" | "ant" | "none">("none");
   let connectingOauth = $state(false);
   let oauthStep = $state<string | null>(null);
   let error = $state("");
   let indexing = $state(false);
   let update = $state<UpdateInfo | null | "none" | "checking">(null);
 
-  const anthropicConnected = $derived((anthropicAuth === "key" || anthropicAuth === "oauth") && s.aiEnabled);
+  const anthropicConnected = $derived((anthropicAuth === "claude" || anthropicAuth === "key" || anthropicAuth === "oauth") && s.aiEnabled);
 
   $effect(() => {
     api.anthropicAuthStatus().then((s) => {
       anthropicAuth = s;
-      if (s === "key" || s === "oauth") {
+      if (s === "claude" || s === "key" || s === "oauth") {
         api.anthropicModels().then((m) => (models = m)).catch(() => {});
       } else if (s === "none") {
         // Pre-warm the one-time CLI setup so the sign-in click goes straight
@@ -65,6 +65,13 @@
     error = "";
     connectingOauth = true;
     try {
+      if (anthropicAuth === "claude") {
+        // Claude Code is installed — it already carries the user's sign-in.
+        models = await api.anthropicModels();
+        clearModelCache();
+        await saveSettings({ aiEnabled: true });
+        return;
+      }
       if (anthropicAuth === "none") {
         oauthStep = "Setting up (one time)…";
         await api.anthropicInstallCli();
@@ -229,7 +236,7 @@
     {#if anthropicConnected}
       <div class="row">
         <span>Anthropic</span>
-        <span>{anthropicAuth === "oauth" ? "Connected — Anthropic account" : "Connected — API key"}</span>
+        <span>{anthropicAuth === "claude" ? "Connected — Claude Code" : anthropicAuth === "oauth" ? "Connected — Anthropic account" : "Connected — API key"}</span>
       </div>
       <label class="row">
         <span>Model</span>
@@ -260,12 +267,13 @@
     {:else}
       <div class="btns">
         <button class="primary" onclick={connectOauth} disabled={connectingOauth}>
-          {oauthStep ?? "Sign in with Anthropic"}
+          {oauthStep ?? (anthropicAuth === "claude" ? "Enable AI — uses your Claude Code sign-in" : "Sign in with Anthropic")}
         </button>
       </div>
       <p class="dim">
-        Opens your browser to sign in with your Anthropic account — nothing to copy.
-        PugDock sets up what it needs automatically.
+        {anthropicAuth === "claude"
+          ? "Claude Code is installed and signed in with your Anthropic account. One click and AI is on — nothing else to set up."
+          : "Opens your browser to sign in with your Anthropic account — nothing to copy. PugDock sets up what it needs automatically."}
       </p>
     {/if}
   </section>
