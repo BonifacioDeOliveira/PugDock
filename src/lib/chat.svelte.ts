@@ -148,6 +148,15 @@ export async function deleteConversation(id: string) {
   if (chat.chatId === id) startNewChat();
 }
 
+/** Recent conversation turns, so the agent resolves references like
+ *  "essa nota" or "a tabela que você criou" from context. */
+function historyBlock(): string {
+  const prior = chat.msgs.filter((m) => !m.streaming).slice(0, -1).slice(-12);
+  if (!prior.length) return "";
+  const lines = prior.map((m) => `${m.role === "user" ? "User" : "PugDock"}: ${m.text.slice(0, 1500)}`);
+  return `Conversation so far:\n${lines.join("\n\n").slice(-9000)}\n\n`;
+}
+
 export async function askStreaming(q: string, blocks: [string, string][]) {
   const sources = blocks.map(([p]) => p);
   streamSeq++;
@@ -157,11 +166,14 @@ export async function askStreaming(q: string, blocks: [string, string][]) {
   const ctx = blocks.map(([p, t]) => `--- ${p} ---\n${t}`).join("\n\n");
   const system =
     "You are PugDock, the AI agent inside the user's notes workspace. Your working directory IS the workspace: use your file tools (Read, Write, Edit, Glob, Grep) to act, not just talk. " +
+    "Be deeply context-sensitive: use the conversation history, the note currently open in the editor, and the workspace excerpts to resolve references like 'this note', 'that table', 'the same folder'. When the relevant context isn't in the excerpts, Read the files yourself before acting. " +
+    "If a request is ambiguous in a way that would change the outcome (which note or folder, replace vs append, what structure the user wants), ask ONE short clarifying question and stop, instead of guessing. When the request is clear, act directly without asking. " +
     "When the user asks you to create a note, folder, table, image reference, or to change content, DO IT with tools (Write/Edit), using workspace-relative paths and Markdown (.md) for notes; then reply with a short summary of what you changed. " +
-    "Never touch files outside the working directory, never edit .chats/ or dotfiles, and prefer creating notes under an appropriate folder (notes/ by default). " +
-    "For pure questions, answer from the provided excerpts and cite the file paths you used; if the answer isn't there, say so. " +
-    "The excerpt marked 'currently open in the editor' is the note the user is looking at right now; treat it as the primary context.";
-  const prompt = `Workspace excerpts:\n\n${ctx.slice(0, 100000)}\n\nUser request: ${q}`;
+    "Never touch files outside the working directory, never edit .chats/ or dotfiles. " +
+    "For pure questions, answer from the provided context and cite the file paths you used; if the answer isn't there, say so. " +
+    "The excerpt marked 'currently open in the editor' is the note the user is looking at right now; treat it as the primary context. " +
+    "Always reply in the same language the user writes in.";
+  const prompt = `${historyBlock()}Workspace excerpts:\n\n${ctx.slice(0, 90000)}\n\nUser request: ${q}`;
   try {
     await api.anthropicRunStream(id, settings().model ?? "auto", system, prompt);
     flushPending();
