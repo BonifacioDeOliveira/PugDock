@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { api, errorMessage, type TreeEntry, type UpdateInfo } from "$lib/api";
+  import { api, errorMessage, type TreeEntry } from "$lib/api";
+  import { checkForUpdate, type AvailableUpdate } from "$lib/update";
   import { app, openFile, openToSide, closeTab, refreshTree, settings, syncEnabled, workspaceManaged, colorFor, toast, type Tab } from "$lib/state.svelte";
   import { switchWorkspace, addWorkspace, closeWorkspace } from "$lib/workspaces";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -66,7 +67,8 @@
   }
   // --- inline prompt modal ---
   let modal = $state<{ title: string; value: string; onOk: (v: string) => void } | null>(null);
-  let updateInfo = $state<UpdateInfo | null>(null);
+  let updateInfo = $state<AvailableUpdate | null>(null);
+  let updating = $state(false);
 
   function showMenu(e: MouseEvent, entry: TreeEntry | null) {
     menu = { x: e.clientX, y: e.clientY, entry };
@@ -157,7 +159,7 @@
       if (syncEnabled() && settings().pullOnStartup) await syncNow().catch(() => {});
       api.rebuildIndex().catch(() => {});
       if (settings().autoCheckUpdates) {
-        updateInfo = await api.checkUpdates(settings().includePrereleases).catch(() => null);
+        updateInfo = await checkForUpdate(settings().includePrereleases).catch(() => null);
       }
     })();
   });
@@ -429,19 +431,38 @@
   <div class="overlay" role="presentation" onclick={() => (updateInfo = null)}>
     <div class="modal" role="presentation" onclick={(e) => e.stopPropagation()}>
       <h4>A new version of PugDock is available.</h4>
-      <p class="dim">Current: v{updateInfo.current} · Latest: {updateInfo.latest}</p>
+      <p class="dim">Latest: v{updateInfo.version}</p>
       {#if updateInfo.notes}<pre class="notes">{updateInfo.notes.slice(0, 2000)}</pre>{/if}
       <div class="btns">
-        <button onclick={() => (updateInfo = null)}>Later</button>
-        <button
-          class="primary"
-          onclick={() => {
-            if (updateInfo) openUrl(updateInfo.url);
-            updateInfo = null;
-          }}
-        >
-          View release
-        </button>
+        <button onclick={() => (updateInfo = null)} disabled={updating}>Later</button>
+        {#if updateInfo.install}
+          <button
+            class="primary"
+            disabled={updating}
+            onclick={async () => {
+              if (!updateInfo?.install) return;
+              updating = true;
+              try {
+                await updateInfo.install();
+              } catch (e) {
+                toast(errorMessage(e));
+                updating = false;
+              }
+            }}
+          >
+            {updating ? "Updating…" : "Update now"}
+          </button>
+        {:else if updateInfo.url}
+          <button
+            class="primary"
+            onclick={() => {
+              if (updateInfo?.url) openUrl(updateInfo.url);
+              updateInfo = null;
+            }}
+          >
+            View release
+          </button>
+        {/if}
       </div>
     </div>
   </div>

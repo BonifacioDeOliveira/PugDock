@@ -114,34 +114,42 @@ it, ship with only the client id and PugDock uses the device flow.
 Without any of it, the app boots but "Continue with GitHub" explains that the
 build has no GitHub app configured.
 
-## Releases and updates
+## Releases and updates (CI/CD)
 
-The in-app update checker reads **GitHub Releases** of the repo set at build time:
+Releases are fully automated by `.github/workflows/release.yml`:
 
-```sh
-PUGDOCK_UPDATE_REPO=youruser/pugdock npm run tauri build
-```
+1. Bump `version` in `src-tauri/tauri.conf.json` (and `package.json`), commit.
+2. Tag and push:
 
-On startup (and via *Settings → Check for updates*) PugDock compares the latest
-release tag (e.g. `v0.2.0`) with the app version, and shows a dialog with release
-notes and a link — it never updates silently.
+   ```sh
+   git tag v0.2.0 && git push origin main --tags
+   ```
 
-### Upgrading to the full Tauri updater (TODO)
+3. GitHub Actions builds **macOS (Apple Silicon + Intel)** and **Ubuntu Linux**
+   (`.dmg`/`.app`, `.AppImage`, `.deb`), signs the updater artifacts, and
+   publishes everything — including the `latest.json` update manifest — to the
+   tag's **GitHub Release**.
 
-The current checker links to the release page. To enable in-place updates with
-`tauri-plugin-updater`, you need:
+Installed apps check for updates on startup (and via *Settings → Check for
+updates*). When a new version exists, the in-app dialog shows the release notes
+and **Update now** downloads, verifies the signature, installs, and relaunches —
+one click, never silent. Dev builds without updater artifacts fall back to a
+"View release" link.
 
-1. `npm run tauri signer generate` → keep the private key out of the repo,
-   put the public key in `tauri.conf.json > plugins > updater > pubkey`.
-2. Add `tauri-plugin-updater` (Rust + capability) and set `createUpdaterArtifacts: true`
-   in the bundle config.
-3. In CI, sign artifacts with the private key (`TAURI_SIGNING_PRIVATE_KEY`) and attach
-   the generated `latest.json` manifest to each GitHub Release.
-4. Point the updater endpoint at
-   `https://github.com/<owner>/<repo>/releases/latest/download/latest.json`.
+### One-time repository setup
 
-The UI (dialog with *Update now / Later / release notes*) is already in place and
-only needs the install action swapped in.
+Add these **Actions secrets** (repo → Settings → Secrets → Actions):
+
+| Secret | Value |
+|---|---|
+| `TAURI_SIGNING_PRIVATE_KEY` | Contents of `~/.pugdock-updater.key` (generated with `npx tauri signer generate`; **never commit it** — losing it means future updates can't be signed) |
+| `PUGDOCK_GITHUB_CLIENT_ID` | Your GitHub OAuth app client id |
+| `PUGDOCK_GITHUB_CLIENT_SECRET` | Your GitHub OAuth app client secret |
+
+The matching public key is committed in `tauri.conf.json > plugins > updater`.
+The updater endpoint points at this repo's releases
+(`.../releases/latest/download/latest.json`) — the repo (or at least its
+releases) must be publicly accessible for installed apps to see updates.
 
 ## Privacy
 

@@ -32,6 +32,15 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDZEMUVFRDFENTRGOUIyOEUKUldTT3N2bFVIZTBlYmVuWkhQaTRFdlkyRnZLZ3dpOS9lRnpzQUJWZktDcGg0bzB4R3ROc3FYWTAK",
+      "endpoints": [
+        "https://github.com/bonifaciofilho/PugDock/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

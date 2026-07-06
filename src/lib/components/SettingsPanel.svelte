@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { api, errorMessage, type Model, type UpdateInfo } from "$lib/api";
+  import { api, errorMessage, type Model } from "$lib/api";
+  import { checkForUpdate, type AvailableUpdate } from "$lib/update";
   import { app, settings, saveSettings, toast } from "$lib/state.svelte";
   import { clearModelCache } from "$lib/ai";
   import { themeState, BUILTIN_THEMES, applyTheme, refreshImportedThemes } from "$lib/theme.svelte";
@@ -14,7 +15,8 @@
   let oauthStep = $state<string | null>(null);
   let error = $state("");
   let indexing = $state(false);
-  let update = $state<UpdateInfo | null | "none" | "checking">(null);
+  let update = $state<AvailableUpdate | null | "none" | "checking">(null);
+  let updating = $state(false);
 
   const anthropicConnected = $derived((anthropicAuth === "claude" || anthropicAuth === "key" || anthropicAuth === "oauth") && s.aiEnabled);
 
@@ -116,10 +118,21 @@
   async function checkNow() {
     update = "checking";
     try {
-      update = (await api.checkUpdates(s.includePrereleases)) ?? "none";
+      update = (await checkForUpdate(s.includePrereleases)) ?? "none";
     } catch (e) {
       error = errorMessage(e);
       update = null;
+    }
+  }
+
+  async function installUpdate() {
+    if (typeof update !== "object" || !update?.install) return;
+    updating = true;
+    try {
+      await update.install();
+    } catch (e) {
+      error = errorMessage(e);
+      updating = false;
     }
   }
 
@@ -294,8 +307,14 @@
       </button>
       {#if update === "none"}<span class="dim">You're up to date.</span>{/if}
       {#if update && typeof update === "object"}
-        <span class="dim">v{update.latest} available —</span>
-        <button class="primary" onclick={() => update && typeof update === "object" && openUrl(update.url)}>View release</button>
+        <span class="dim">v{update.version} available —</span>
+        {#if update.install}
+          <button class="primary" onclick={installUpdate} disabled={updating}>
+            {updating ? "Updating…" : "Update now"}
+          </button>
+        {:else if update.url}
+          <button class="primary" onclick={() => typeof update === "object" && update?.url && openUrl(update.url)}>View release</button>
+        {/if}
       {/if}
     </div>
   </section>
