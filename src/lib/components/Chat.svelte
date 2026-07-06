@@ -232,13 +232,15 @@
             {#if m.role === "ai" && m.streaming && !m.text}
               <div class="thinking">
                 <span class="throbber" aria-hidden="true"></span>
-                <span class="pulse">{chat.activity ?? "Thinking…"}</span>
+                <span class="pulse">{chat.activity ?? "Thinking"}<span class="dots" aria-hidden="true"><i>.</i><i>.</i><i>.</i></span></span>
               </div>
             {:else if m.role === "ai"}
               <!-- eslint-disable-next-line svelte/no-at-html-tags (sanitized in md()) -->
               <div class="msg-text mdv">{@html md(m.text)}</div>
-              {#if m.streaming && chat.activity}
-                <div class="activity">🛠 {chat.activity}</div>
+              {#if m.streaming}
+                <div class="activity">
+                  {#if chat.activity}🛠 {chat.activity}{:else}Working{/if}<span class="dots" aria-hidden="true"><i>.</i><i>.</i><i>.</i></span>
+                </div>
               {/if}
             {:else}
               <div class="msg-text">{m.text}</div>
@@ -456,6 +458,25 @@
     font-size: 11px;
     color: var(--text-dim);
     font-style: italic;
+  }
+  .dots i {
+    font-style: normal;
+    animation: dot-blink 1.2s infinite;
+    opacity: 0;
+  }
+  .dots i:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+  .dots i:nth-child(3) {
+    animation-delay: 0.4s;
+  }
+  @keyframes dot-blink {
+    0%, 20% {
+      opacity: 0;
+    }
+    40%, 100% {
+      opacity: 1;
+    }
   }
   .thinking {
     display: flex;

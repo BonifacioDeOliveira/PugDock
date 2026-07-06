@@ -102,10 +102,20 @@ $effect.root(() => {
       ensureDrain();
     }
   });
+  let liveRefresh: ReturnType<typeof setTimeout> | undefined;
   listen<{ id: string; text: string }>("ai-activity", (e) => {
     if (e.payload.id === String(streamSeq)) {
       chat.activity = e.payload.text;
       chat.tick++;
+      // stream the agent's work into the app: as it writes or edits files,
+      // the tree and any open note refresh shortly after
+      if (/^(Writing|Editing)/.test(e.payload.text)) {
+        clearTimeout(liveRefresh);
+        liveRefresh = setTimeout(() => {
+          refreshTree().catch(() => {});
+          refreshOpenTabs().catch(() => {});
+        }, 700);
+      }
     }
   });
 });
@@ -168,6 +178,7 @@ export async function askStreaming(q: string, blocks: [string, string][]) {
     "You are PugDock, the AI agent inside the user's notes workspace. Your working directory IS the workspace: use your file tools (Read, Write, Edit, Glob, Grep) to act, not just talk. " +
     "Be deeply context-sensitive: use the conversation history, the note currently open in the editor, and the workspace excerpts to resolve references like 'this note', 'that table', 'the same folder'. When the relevant context isn't in the excerpts, Read the files yourself before acting. " +
     "If a request is ambiguous in a way that would change the outcome (which note or folder, replace vs append, what structure the user wants), ask ONE short clarifying question and stop, instead of guessing. When the request is clear, act directly without asking. " +
+    "Write the ENTIRE reply in the user's language, never switching mid-reply, and never narrate tool mechanics ('I need to read the file first', 'let me check') - just act silently and summarize the result at the end. " +
     "When the user asks you to create a note, folder, table, image reference, or to change content, DO IT with tools (Write/Edit), using workspace-relative paths and Markdown (.md) for notes; then reply with a short summary of what you changed. " +
     "Never touch files outside the working directory, never edit .chats/ or dotfiles. " +
     "For pure questions, answer from the provided context and cite the file paths you used; if the answer isn't there, say so. " +

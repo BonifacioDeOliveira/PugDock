@@ -242,14 +242,21 @@ pub async fn anthropic_run_stream(
             }
             Some("assistant") => {
                 if let Some(items) = v["message"]["content"].as_array() {
+                    let root = crate::workspace::workspace_root(&app)
+                        .map(|r| r.to_string_lossy().to_string())
+                        .unwrap_or_default();
                     for it in items {
                         if it["type"] == "tool_use" {
                             let name = it["name"].as_str().unwrap_or("tool");
-                            let target = it["input"]["file_path"]
+                            let raw = it["input"]["file_path"]
                                 .as_str()
                                 .or(it["input"]["path"].as_str())
                                 .or(it["input"]["pattern"].as_str())
                                 .unwrap_or("");
+                            let target = raw
+                                .strip_prefix(&root)
+                                .map(|t| t.trim_start_matches('/'))
+                                .unwrap_or(raw);
                             let label = match name {
                                 "Write" => format!("Writing {target}"),
                                 "Edit" => format!("Editing {target}"),
