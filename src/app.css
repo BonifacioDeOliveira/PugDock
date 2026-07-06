@@ -119,20 +119,27 @@ code {
 [data-tip] {
   position: relative;
 }
-/* The bubble only exists while hovered, so it never inflates scroll areas */
+/* The bubble only exists while hovered, so it never inflates scroll areas.
+   Background is layered over --bg so it is ALWAYS fully opaque, even when a
+   theme defines colors with alpha. Font properties are reset so tooltips on
+   bold/italic/mono buttons don't inherit their styling. */
 [data-tip]:hover::after {
   content: attr(data-tip);
   position: absolute;
   top: calc(100% + 6px);
   left: 50%;
   transform: translateX(-50%);
-  background: var(--bg-active);
+  background: linear-gradient(var(--bg-active), var(--bg-active)), var(--bg);
   color: var(--text);
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in srgb, var(--text-dim) 45%, var(--border));
   border-radius: 6px;
   padding: 4px 9px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   font-size: 11px;
   font-weight: 400;
+  font-style: normal;
+  letter-spacing: normal;
+  text-transform: none;
   line-height: 1.35;
   width: max-content;
   max-width: 240px;
@@ -140,7 +147,7 @@ code {
   text-align: center;
   pointer-events: none;
   z-index: 600;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
   animation: tip-in 0.1s ease 0.15s both;
 }
 @keyframes tip-in {
