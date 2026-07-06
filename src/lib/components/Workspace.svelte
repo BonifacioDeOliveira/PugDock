@@ -629,6 +629,10 @@
     position: relative;
     max-width: 50%;
     overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .ws-tabs::-webkit-scrollbar {
+    display: none;
   }
   .ws-tab {
     display: flex;
