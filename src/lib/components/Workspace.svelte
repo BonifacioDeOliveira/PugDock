@@ -72,9 +72,16 @@
 
   async function showAll() {
     allMode = true;
-    const list = app.config?.workspaces ?? [];
+    const list = [...(app.config?.workspaces ?? [])];
+    // The repo root holds items that belong to no workspace: show it last,
+    // labeled accordingly.
+    const rootPath = list.find((w) => w.managed)?.path;
+    list.sort((a, b) => (a.path === rootPath ? 1 : 0) - (b.path === rootPath ? 1 : 0));
     allTrees = await Promise.all(
-      list.map(async (ws) => ({ ws, tree: await api.listTreeAt(ws.path).catch(() => []) })),
+      list.map(async (ws) => ({
+        ws: ws.path === rootPath ? { ...ws, name: "No workspace" } : ws,
+        tree: await api.listTreeAt(ws.path).catch(() => []),
+      })),
     );
   }
 
@@ -328,8 +335,8 @@
           {/if}
         </div>
       {/each}
-      <button class="ghost ws-add" data-tip="New workspace" onclick={newWorkspace}>＋</button>
     </div>
+    <button class="ghost ws-add" data-tip="Create a new workspace" aria-label="Create a new workspace" onclick={newWorkspace}>＋</button>
     <button class="ghost" onclick={() => (app.panel = app.panel === "search" ? null : "search")}>
       Search <kbd>⌘P</kbd>
     </button>

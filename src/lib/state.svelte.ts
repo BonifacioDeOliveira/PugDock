@@ -121,10 +121,26 @@ export async function saveSettings(patch: Partial<Settings>) {
   app.config = fresh;
 }
 
+function treeContains(path: string, entries: TreeEntry[]): boolean {
+  return entries.some((e) => e.path === path || (e.children ? treeContains(path, e.children) : false));
+}
+
 export async function refreshTree() {
   app.tree = await api.listTree();
   app.syncExcluded = await api.syncExclusions().catch(() => []);
   loadPinsAndRecent();
+  // Quick lists only ever show files of the CURRENT workspace: prune
+  // anything that does not exist in its tree (stale or foreign entries).
+  const pruneP = app.pins.filter((p) => treeContains(p, app.tree));
+  const pruneR = app.recent.filter((p) => treeContains(p, app.tree));
+  if (pruneP.length !== app.pins.length) {
+    app.pins = pruneP;
+    localStorage.setItem(wsKey("pugdock-pins"), JSON.stringify(pruneP));
+  }
+  if (pruneR.length !== app.recent.length) {
+    app.recent = pruneR;
+    localStorage.setItem(wsKey("pugdock-recent"), JSON.stringify(pruneR));
+  }
 }
 
 export function toast(msg: string) {
