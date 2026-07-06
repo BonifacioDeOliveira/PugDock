@@ -200,7 +200,11 @@
 {/if}
 
 <button class="ai-fab" class:open onclick={() => (open = !open)} title="PugDock AI">
-  {open ? "×" : "🐾"}
+  {#if open}
+    ×
+  {:else}
+    <img src="/PugDockAI.png" alt="PugDock AI" />
+  {/if}
 </button>
 
 <style>
@@ -208,8 +212,8 @@
     position: fixed;
     right: 24px;
     bottom: 24px;
-    width: 48px;
-    height: 48px;
+    width: 52px;
+    height: 52px;
     border-radius: 50%;
     border: 1px solid var(--border);
     background: var(--bg-panel);
@@ -219,6 +223,16 @@
     z-index: 400;
     transition: transform 0.15s ease;
     padding: 0;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .ai-fab img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
   }
   .ai-fab:hover {
     transform: scale(1.08);

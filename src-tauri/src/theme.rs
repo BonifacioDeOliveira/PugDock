@@ -3,7 +3,7 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use std::fs;
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tauri::Manager;
 
 /// VSCode theme files are JSONC: strip // and /* */ comments (outside strings)
@@ -145,13 +145,18 @@ pub struct ThemeMeta {
 /// Import all color themes from a VSCode .vsix extension package.
 #[tauri::command]
 pub fn import_vsix_theme(app: tauri::AppHandle, vsix_path: String) -> Result<Vec<ThemeMeta>> {
-    let file = fs::File::open(&vsix_path)?;
+    let dir = themes_dir(&app)?;
+    import_vsix_into(&vsix_path, &dir)
+}
+
+fn import_vsix_into(vsix_path: &str, dir: &Path) -> Result<Vec<ThemeMeta>> {
+    let file = fs::File::open(vsix_path)
+        .map_err(|e| AppError::Other(format!("Could not open the file: {e}")))?;
     let mut zip = zip::ZipArchive::new(file).map_err(|_| AppError::Other("This file is not a valid .vsix package.".into()))?;
     let manifest = parse_jsonc(&read_zip_file(&mut zip, "extension/package.json")?)?;
     let Some(entries) = manifest["contributes"]["themes"].as_array().cloned() else {
         return Err(AppError::Other("This extension contains no color themes.".into()));
     };
-    let dir = themes_dir(&app)?;
     let mut imported = Vec::new();
     for entry in entries {
         let Some(rel) = entry["path"].as_str() else { continue };
@@ -248,21 +253,21 @@ mod tests {
         assert_eq!(slugify("Dracula (Official) Theme!"), "dracula-official-theme");
     }
 
-    /// End-to-end parse of a real .vsix. Skips unless PUGDOCK_TEST_VSIX points
-    /// at a downloaded package, so CI doesn't need network.
+    /// Full import of a real .vsix into a temp dir. Skips unless
+    /// PUGDOCK_TEST_VSIX points at a downloaded package (no network in CI).
     #[test]
     fn parses_real_vsix_when_provided() {
         let Some(path) = std::env::var_os("PUGDOCK_TEST_VSIX") else { return };
-        let file = fs::File::open(path).unwrap();
-        let mut zip = zip::ZipArchive::new(file).unwrap();
-        let manifest = parse_jsonc(&read_zip_file(&mut zip, "extension/package.json").unwrap()).unwrap();
-        let themes = manifest["contributes"]["themes"].as_array().unwrap().clone();
-        assert!(!themes.is_empty());
-        for t in &themes {
-            let p = zip_join("extension", t["path"].as_str().unwrap());
-            let theme = load_theme_json(&mut zip, &p).unwrap();
-            assert!(theme["colors"].is_object(), "colors missing in {p}");
-            assert!(theme["tokenColors"].is_array(), "tokenColors missing in {p}");
+        let dir = std::env::temp_dir().join(format!("pugdock-theme-test-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let imported = import_vsix_into(path.to_str().unwrap(), &dir).unwrap();
+        assert!(!imported.is_empty());
+        for meta in &imported {
+            let f = dir.join(format!("{}.json", meta.id));
+            let v: Value = serde_json::from_str(&fs::read_to_string(&f).unwrap()).unwrap();
+            assert!(v["colors"].is_object(), "colors missing in {}", meta.id);
+            assert!(v["tokenColors"].is_array(), "tokenColors missing in {}", meta.id);
         }
+        let _ = fs::remove_dir_all(&dir);
     }
 }

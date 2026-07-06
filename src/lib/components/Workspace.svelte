@@ -1,7 +1,7 @@
 <script lang="ts">
   import { api, errorMessage, type TreeEntry } from "$lib/api";
   import { checkForUpdate, type AvailableUpdate } from "$lib/update";
-  import { app, openFile, openToSide, closeTab, refreshTree, settings, syncEnabled, workspaceManaged, colorFor, toast, type Tab } from "$lib/state.svelte";
+  import { app, openFile, openToSide, closeTab, focusTab, moveTabToPane, collapseSplit, renameOpenPath, refreshTree, settings, syncEnabled, workspaceManaged, colorFor, toast, type Tab } from "$lib/state.svelte";
   import { switchWorkspace, addWorkspace, closeWorkspace } from "$lib/workspaces";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
   import MarkdownView from "./MarkdownView.svelte";
@@ -20,7 +20,34 @@
   import { openUrl } from "@tauri-apps/plugin-opener";
 
   const activeTab = $derived(app.tabs.find((t) => t.path === app.activePath));
-  const splitTab = $derived(app.split ? app.tabs.find((t) => t.path === app.split?.path) : undefined);
+
+  // --- tab drag & drop (VSCode-style split) ---
+  let dragPath = $state<string | null>(null);
+  let splitHint = $state(false);
+
+  function onTabDragStart(e: DragEvent, path: string) {
+    dragPath = path;
+    e.dataTransfer?.setData("text/plain", path);
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+  }
+
+  function onPaneDragOver(e: DragEvent, paneIndex: number) {
+    if (!dragPath) return;
+    e.preventDefault();
+    if (app.panes.length === 1 && paneIndex === 0) {
+      const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      splitHint = e.clientX > r.left + r.width * 0.7;
+    }
+  }
+
+  function onPaneDrop(e: DragEvent, paneIndex: number) {
+    if (!dragPath) return;
+    e.preventDefault();
+    const target = splitHint && app.panes.length === 1 ? 1 : paneIndex;
+    moveTabToPane(dragPath, target);
+    dragPath = null;
+    splitHint = false;
+  }
 
   const SYNC_LABEL: Record<string, string> = {
     saved: "Saved",
@@ -106,12 +133,7 @@
       ask("Rename / move", entry.path, (v) =>
         run(async () => {
           await api.renamePath(entry.path, v);
-          const tab = app.tabs.find((t) => t.path === entry.path);
-          if (tab) {
-            tab.path = v;
-            tab.name = v.split("/").pop() ?? v;
-          }
-          if (app.activePath === entry.path) app.activePath = v;
+          renameOpenPath(entry.path, v);
           api.removeFromIndex(entry.path).catch(() => {});
           api.indexFile(v).catch(() => {});
         }),
@@ -177,7 +199,7 @@
       closeTab(app.activePath);
     } else if (mod && e.key === "\\") {
       e.preventDefault();
-      if (app.split) app.split = null;
+      if (app.panes.length > 1) collapseSplit();
       else if (app.activePath) openToSide(app.activePath);
     }
   }
@@ -247,7 +269,16 @@
     {/if}
     <button class="ghost" onclick={() => (app.panel = app.panel === "history" ? null : "history")}>History</button>
     <button class="ghost" onclick={() => (app.panel = app.panel === "ai" ? null : "ai")}>AI</button>
-    <button class="ghost" onclick={() => (app.panel = app.panel === "settings" ? null : "settings")}>⚙</button>
+    <button
+      class="ghost settings-btn"
+      title="Settings"
+      onclick={() => (app.panel = app.panel === "settings" ? null : "settings")}
+    >
+      <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="3" />
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+      </svg>
+    </button>
   </header>
 
   <div class="body">
@@ -280,45 +311,6 @@
     </aside>
 
     <main>
-      {#if app.tabs.length}
-        <div class="tabs">
-          <div class="tab-list">
-            {#each app.tabs as tab (tab.path)}
-              <div
-                class="tab"
-                class:active={tab.path === app.activePath}
-                style="--tab-color: {colorFor(tab.path)}"
-              >
-                <button class="tab-name" onclick={() => (app.activePath = tab.path)}>
-                  {tab.dirty ? "● " : ""}{tab.name}
-                </button>
-                <button class="tab-close" onclick={() => closeTab(tab.path)}>×</button>
-              </div>
-            {/each}
-          </div>
-          {#if activeTab}
-            <div class="tab-actions">
-              {#if activeTab.path.endsWith(".md")}
-                <button
-                  class="ghost"
-                  title={activeTab.preview ? "Edit" : "Preview"}
-                  onclick={() => activeTab && (activeTab.preview = !activeTab.preview)}
-                >
-                  {activeTab.preview ? "✏️ Edit" : "👁 Preview"}
-                </button>
-              {/if}
-              <button
-                class="ghost"
-                title="Open to the side (⌘\)"
-                onclick={() => activeTab && openToSide(activeTab.path)}
-              >
-                ⫽ Split
-              </button>
-            </div>
-          {/if}
-        </div>
-      {/if}
-
       {#snippet fileView(tab: Tab, preview: boolean)}
         {#if tab.kind === "text" && preview && tab.path.endsWith(".md")}
           <MarkdownView {tab} />
@@ -333,37 +325,82 @@
         {/if}
       {/snippet}
 
-      <div class="content" class:split={!!splitTab}>
-        <div class="pane">
-          {#if activeTab}
-            {#key `${activeTab.path}:${activeTab.version}:${activeTab.preview ? "p" : "e"}`}
-              {@render fileView(activeTab, activeTab.preview)}
-            {/key}
-          {:else}
-            <div class="empty">
-              <p>🐾</p>
-              <p>Open a file, drop one here, or press <kbd>⌘P</kbd> to search.</p>
-            </div>
-          {/if}
-        </div>
-        {#if splitTab && app.split}
-          <div class="pane side">
-            <div class="pane-head">
-              <span class="pane-title">{splitTab.name}</span>
-              {#if splitTab.path.endsWith(".md")}
-                <button class="ghost" onclick={() => app.split && (app.split.preview = !app.split.preview)}>
-                  {app.split.preview ? "✏️" : "👁"}
-                </button>
+      <div class="content">
+        {#each app.panes as pane, pi (pi)}
+          {@const paneTab = app.tabs.find((t) => t.path === pane.active)}
+          <div
+            class="pane"
+            class:focused={app.panes.length > 1 && app.focused === pi}
+            role="group"
+            ondragover={(e) => onPaneDragOver(e, pi)}
+            ondragleave={() => (splitHint = false)}
+            ondrop={(e) => onPaneDrop(e, pi)}
+          >
+            {#if pane.paths.length}
+              <div class="tabs">
+                <div class="tab-list">
+                  {#each pane.paths as path (path)}
+                    {@const tab = app.tabs.find((t) => t.path === path)}
+                    {#if tab}
+                      <div
+                        class="tab"
+                        class:active={path === pane.active}
+                        style="--tab-color: {colorFor(path)}"
+                        draggable="true"
+                        role="presentation"
+                        ondragstart={(e) => onTabDragStart(e, path)}
+                        ondragend={() => {
+                          dragPath = null;
+                          splitHint = false;
+                        }}
+                      >
+                        <button class="tab-name" onclick={() => focusTab(pi, path)}>
+                          {tab.dirty ? "● " : ""}{tab.name}
+                        </button>
+                        <button class="tab-close" onclick={() => closeTab(path)}>×</button>
+                      </div>
+                    {/if}
+                  {/each}
+                </div>
+                {#if paneTab}
+                  <div class="tab-actions">
+                    {#if paneTab.path.endsWith(".md")}
+                      <button
+                        class="ghost"
+                        title={paneTab.preview ? "Edit" : "Preview"}
+                        onclick={() => (paneTab.preview = !paneTab.preview)}
+                      >
+                        {paneTab.preview ? "✏️ Edit" : "👁 Preview"}
+                      </button>
+                    {/if}
+                    <button
+                      class="ghost"
+                      title="Move to the other group (⌘\)"
+                      onclick={() => moveTabToPane(paneTab.path, pi === 0 ? 1 : 0)}
+                    >
+                      ⫽
+                    </button>
+                  </div>
+                {/if}
+              </div>
+            {/if}
+            <div class="pane-content">
+              {#if paneTab}
+                {#key `${paneTab.path}:${paneTab.version}:${paneTab.preview ? "p" : "e"}`}
+                  {@render fileView(paneTab, paneTab.preview)}
+                {/key}
+              {:else}
+                <div class="empty">
+                  <p>🐾</p>
+                  <p>Open a file, drop one here, or press <kbd>⌘P</kbd> to search.</p>
+                </div>
               {/if}
-              <button class="ghost" title="Close split" onclick={() => (app.split = null)}>×</button>
             </div>
-            <div class="pane-body">
-              {#key `${splitTab.path}:${splitTab.version}:${app.split.preview ? "p" : "e"}`}
-                {@render fileView(splitTab, app.split.preview)}
-              {/key}
-            </div>
+            {#if splitHint && pi === 0 && app.panes.length === 1}
+              <div class="drop-right"></div>
+            {/if}
           </div>
-        {/if}
+        {/each}
       </div>
     </main>
 
@@ -565,6 +602,11 @@
   .sync.warn {
     color: var(--warn);
   }
+  .settings-btn {
+    display: flex;
+    align-items: center;
+    padding: 5px 8px;
+  }
   kbd {
     font-size: 10px;
     color: var(--text-dim);
@@ -712,39 +754,35 @@
     display: flex;
     flex-direction: column;
   }
-  .pane > :global(*) {
-    flex: 1;
-    min-height: 0;
+  .pane {
+    position: relative;
   }
-  .pane.side {
+  .pane + .pane {
     border-left: 1px solid var(--border);
   }
-  .pane-head {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 3px 8px;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg-panel);
-    flex: 0 0 auto;
+  .pane.focused {
+    box-shadow: inset 0 2px 0 var(--accent);
   }
-  .pane-title {
-    flex: 1;
-    font-size: 12px;
-    color: var(--text-dim);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .pane-body {
+  .pane-content {
     flex: 1;
     min-height: 0;
     display: flex;
     flex-direction: column;
   }
-  .pane-body > :global(*) {
+  .pane-content > :global(*) {
     flex: 1;
     min-height: 0;
+  }
+  .drop-right {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 30%;
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+    border-left: 2px solid var(--accent);
+    pointer-events: none;
+    z-index: 5;
   }
   .empty {
     display: grid;

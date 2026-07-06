@@ -52,6 +52,7 @@
       );
     } catch (e) {
       error = errorMessage(e);
+      toast(`Theme import failed: ${errorMessage(e)}`);
     }
   }
 
@@ -68,10 +69,14 @@
     connectingOauth = true;
     try {
       if (anthropicAuth === "claude") {
-        // Claude Code is installed — it already carries the user's sign-in.
+        // Re-verify for real, like claude-mem does per request: run a tiny
+        // prompt through Claude Code to prove the sign-in still works.
+        oauthStep = "Verifying your Claude Code sign-in…";
+        await api.anthropicVerify();
         models = await api.anthropicModels();
         clearModelCache();
         await saveSettings({ aiEnabled: true });
+        toast("Claude Code sign-in verified — AI is on");
         return;
       }
       if (anthropicAuth === "none") {

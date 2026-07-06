@@ -1,23 +1,24 @@
 import { api } from "./api";
-import { app, refreshTree, settings, syncEnabled, workspaceManaged, type Tab } from "./state.svelte";
+import { app, refreshTree, settings, syncEnabled, workspaceManaged, type Tab, type Pane } from "./state.svelte";
 import { flushSaves, startSync, syncNow } from "./sync";
 
 // Per-workspace UI state, kept while the app is open so switching tabs
-// restores exactly what you had (open files, active file, split).
-const uiCache = new Map<string, { tabs: Tab[]; activePath: string | null; split: typeof app.split }>();
+// restores exactly what you had (open files, editor groups, focus).
+const uiCache = new Map<string, { tabs: Tab[]; panes: Pane[]; focused: number }>();
 
 function stashCurrent() {
   const current = app.config?.workspace_path;
   if (current) {
-    uiCache.set(current, { tabs: app.tabs, activePath: app.activePath, split: app.split });
+    uiCache.set(current, { tabs: app.tabs, panes: app.panes, focused: app.focused });
   }
 }
 
 async function activate(path: string) {
   const cached = uiCache.get(path);
   app.tabs = cached?.tabs ?? [];
-  app.activePath = cached?.activePath ?? null;
-  app.split = cached?.split ?? null;
+  app.panes = cached?.panes ?? [{ paths: [], active: null }];
+  app.focused = cached?.focused ?? 0;
+  app.activePath = app.panes[app.focused]?.active ?? null;
   app.conflicts = [];
   app.pendingChanges = 0;
   app.syncState = "saved";

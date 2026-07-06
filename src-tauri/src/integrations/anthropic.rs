@@ -174,6 +174,24 @@ pub async fn anthropic_auth_status() -> Result<String> {
     Ok(if ant_path().is_some() { "ant" } else { "none" }.into())
 }
 
+/// Prove the Claude Code sign-in actually works by running a tiny prompt
+/// through it (cheap model). Used by the connect flow so "Connected" means
+/// verified, not just "binary found".
+#[tauri::command]
+pub async fn anthropic_verify() -> Result<()> {
+    let reply = run_claude_code(
+        Some("claude-haiku-4-5"),
+        "Reply with exactly: OK",
+        "ping",
+    )
+    .await?;
+    if reply.contains("OK") {
+        Ok(())
+    } else {
+        Err(AppError::Other("Claude Code responded unexpectedly. Try again.".into()))
+    }
+}
+
 /// One-time setup for browser sign-in: installs the official Anthropic CLI
 /// via Homebrew when it's missing. No-op if already installed.
 #[tauri::command]

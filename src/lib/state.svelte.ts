@@ -10,6 +10,11 @@ export type SyncUiState =
   | "offline"
   | "needs-review";
 
+export interface Pane {
+  paths: string[];
+  active: string | null;
+}
+
 export interface Tab {
   path: string;
   name: string;
@@ -54,10 +59,13 @@ export const app = $state({
   loaded: false,
   config: null as AppConfig | null,
   tree: [] as TreeEntry[],
+  /** Open documents (shared store — panes reference them by path). */
   tabs: [] as Tab[],
+  /** Editor groups, VSCode-style: each pane has its own tab strip. */
+  panes: [{ paths: [], active: null }] as Pane[],
+  focused: 0,
+  /** Mirror of the focused pane's active path (what side panels act on). */
   activePath: null as string | null,
-  /** Right-hand split pane: a path from `tabs`, with its own preview mode. */
-  split: null as { path: string; preview: boolean } | null,
   syncState: "synced" as SyncUiState,
   pendingChanges: 0,
   conflicts: [] as string[],
@@ -148,25 +156,95 @@ async function loadTab(path: string): Promise<Tab> {
   return tab;
 }
 
+function mirror() {
+  app.activePath = app.panes[app.focused]?.active ?? null;
+}
+
+export function focusTab(paneIndex: number, path: string) {
+  app.focused = paneIndex;
+  app.panes[paneIndex].active = path;
+  mirror();
+}
+
 export async function openFile(path: string) {
   await loadTab(path);
-  app.activePath = path;
+  const already = app.panes.findIndex((p) => p.paths.includes(path));
+  if (already >= 0) {
+    focusTab(already, path);
+    return;
+  }
+  app.panes[app.focused].paths.push(path);
+  focusTab(app.focused, path);
+}
+
+/** Move (or open) a file into a target pane, creating the split as needed. */
+export async function moveTabToPane(path: string, target: number) {
+  await loadTab(path);
+  while (app.panes.length <= target) app.panes.push({ paths: [], active: null });
+  const src = app.panes.findIndex((p) => p.paths.includes(path));
+  if (src === target) {
+    focusTab(target, path);
+    return;
+  }
+  if (src >= 0) removeFromPane(src, path);
+  // pane indexes may have shifted if a pane collapsed
+  const t = Math.min(target, app.panes.length);
+  while (app.panes.length <= t) app.panes.push({ paths: [], active: null });
+  if (!app.panes[t].paths.includes(path)) app.panes[t].paths.push(path);
+  focusTab(t, path);
 }
 
 export async function openToSide(path: string) {
-  await loadTab(path);
-  // Same file on both sides: right pane becomes a live preview (md) to avoid
-  // two editors fighting over one document.
-  const forcePreview = path === app.activePath && path.endsWith(".md");
-  app.split = { path, preview: forcePreview };
+  await moveTabToPane(path, 1);
+}
+
+/** Merge the right group back into the left one. */
+export function collapseSplit() {
+  if (app.panes.length < 2) return;
+  const [left, right] = app.panes;
+  for (const p of right.paths) if (!left.paths.includes(p)) left.paths.push(p);
+  left.active = right.active ?? left.active;
+  app.panes = [left];
+  app.focused = 0;
+  mirror();
+}
+
+function removeFromPane(paneIndex: number, path: string) {
+  const pane = app.panes[paneIndex];
+  const i = pane.paths.indexOf(path);
+  if (i === -1) return;
+  pane.paths.splice(i, 1);
+  if (pane.active === path) {
+    pane.active = pane.paths[Math.min(i, pane.paths.length - 1)] ?? null;
+  }
+  if (app.panes.length > 1 && pane.paths.length === 0) {
+    app.panes.splice(paneIndex, 1);
+    if (app.focused >= app.panes.length) app.focused = app.panes.length - 1;
+  }
+  mirror();
 }
 
 export function closeTab(path: string) {
-  if (app.split?.path === path) app.split = null;
-  const i = app.tabs.findIndex((t) => t.path === path);
-  if (i === -1) return;
-  app.tabs.splice(i, 1);
-  if (app.activePath === path) {
-    app.activePath = app.tabs[Math.min(i, app.tabs.length - 1)]?.path ?? null;
+  const paneIndex = app.panes.findIndex((p) => p.paths.includes(path));
+  if (paneIndex >= 0) removeFromPane(paneIndex, path);
+  if (!app.panes.some((p) => p.paths.includes(path))) {
+    const i = app.tabs.findIndex((t) => t.path === path);
+    if (i >= 0) app.tabs.splice(i, 1);
   }
+  mirror();
+}
+
+/** Keep pane references and the mirror consistent when a file is renamed. */
+export function renameOpenPath(from: string, to: string) {
+  const tab = app.tabs.find((t) => t.path === from);
+  if (tab) {
+    tab.path = to;
+    tab.name = to.split("/").pop() ?? to;
+  }
+  for (const pane of app.panes) {
+    const i = pane.paths.indexOf(from);
+    if (i >= 0) pane.paths[i] = to;
+    if (pane.active === from) pane.active = to;
+  }
+  mirror();
 }
