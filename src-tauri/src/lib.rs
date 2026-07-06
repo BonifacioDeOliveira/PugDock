@@ -72,6 +72,8 @@ pub fn run() {
             integrations::github::github_create_repo,
             // anthropic
             integrations::anthropic::anthropic_connect,
+            integrations::anthropic::anthropic_auth_status,
+            integrations::anthropic::anthropic_oauth_login,
             integrations::anthropic::anthropic_models,
             integrations::anthropic::anthropic_run,
             // themes
