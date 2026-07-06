@@ -1,6 +1,6 @@
 <script lang="ts">
   import { api, errorMessage, type TreeEntry, type UpdateInfo } from "$lib/api";
-  import { app, openFile, closeTab, refreshTree, settings, toast } from "$lib/state.svelte";
+  import { app, openFile, closeTab, refreshTree, settings, syncEnabled, toast } from "$lib/state.svelte";
   import { syncNow, startSync, pushOnExit, flushSaves } from "$lib/sync";
   import FileTree from "./FileTree.svelte";
   import CodeEditor from "./CodeEditor.svelte";
@@ -119,7 +119,7 @@
   $effect(() => {
     (async () => {
       startSync();
-      if (settings().pullOnStartup) await syncNow().catch(() => {});
+      if (syncEnabled() && settings().pullOnStartup) await syncNow().catch(() => {});
       api.rebuildIndex().catch(() => {});
       if (settings().autoCheckUpdates) {
         updateInfo = await api.checkUpdates(settings().includePrereleases).catch(() => null);
@@ -151,16 +151,26 @@
       Search <kbd>⌘P</kbd>
     </button>
     <div class="spacer"></div>
-    <button
-      class="ghost sync"
-      class:warn={app.syncState === "offline" || app.syncState === "needs-review"}
-      onclick={() => syncNow().catch((e) => toast(errorMessage(e)))}
-      title="Sync now"
-    >
-      {SYNC_LABEL[app.syncState]}{app.syncState === "offline" && app.pendingChanges
-        ? ` — ${app.pendingChanges} change${app.pendingChanges > 1 ? "s" : ""} waiting`
-        : ""}
-    </button>
+    {#if syncEnabled()}
+      <button
+        class="ghost sync"
+        class:warn={app.syncState === "offline" || app.syncState === "needs-review"}
+        onclick={() => syncNow().catch((e) => toast(errorMessage(e)))}
+        title="Sync now"
+      >
+        {SYNC_LABEL[app.syncState]}{app.syncState === "offline" && app.pendingChanges
+          ? ` — ${app.pendingChanges} change${app.pendingChanges > 1 ? "s" : ""} waiting`
+          : ""}
+      </button>
+    {:else}
+      <button
+        class="ghost sync"
+        onclick={() => (app.panel = "settings")}
+        title="Sync is off — connect GitHub in Settings"
+      >
+        {app.syncState === "saving" ? "Saving…" : "Local only"}
+      </button>
+    {/if}
     <button class="ghost" onclick={() => (app.panel = app.panel === "history" ? null : "history")}>History</button>
     <button class="ghost" onclick={() => (app.panel = app.panel === "ai" ? null : "ai")}>AI</button>
     <button class="ghost" onclick={() => (app.panel = app.panel === "settings" ? null : "settings")}>⚙</button>

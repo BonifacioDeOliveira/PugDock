@@ -1,5 +1,5 @@
 import { api, errorCode } from "./api";
-import { app, applyStatus, settings } from "./state.svelte";
+import { app, applyStatus, settings, syncEnabled } from "./state.svelte";
 
 // Debounced local save → idle checkpoint → periodic push.
 // The user never waits on the network to type or save.
@@ -21,7 +21,7 @@ export function scheduleSave(path: string, getContent: () => string) {
         api.indexFile(path).catch(() => {});
         const tab = app.tabs.find((t) => t.path === path);
         if (tab) tab.dirty = false;
-        if (app.syncState === "saving") app.syncState = "saved-locally";
+        if (app.syncState === "saving") app.syncState = syncEnabled() ? "saved-locally" : "saved";
         scheduleCheckpoint();
       } catch {
         app.syncState = "needs-review";
@@ -64,6 +64,13 @@ async function checkpoint() {
 
 /** Full sync: checkpoint pending edits, pull, then push. */
 export async function syncNow() {
+  if (!syncEnabled()) {
+    // Local-only mode: checkpoint for history, nothing to push.
+    await flushSaves();
+    await api.gitCheckpoint().catch(() => {});
+    app.syncState = "saved";
+    return;
+  }
   try {
     await flushSaves();
     app.syncState = "checkpointing";
@@ -92,7 +99,7 @@ export async function syncNow() {
 /** Start background schedulers. Call once when the workspace opens. */
 export function startSync() {
   if (pushInterval) clearInterval(pushInterval);
-  if (settings().syncMode !== "manual") {
+  if (syncEnabled() && settings().syncMode !== "manual") {
     const secs = settings().syncMode === "frequent" ? 60 : settings().pushSeconds;
     pushInterval = setInterval(async () => {
       const st = await api.gitStatus().catch(() => null);
@@ -105,8 +112,9 @@ export function startSync() {
 }
 
 export async function pushOnExit() {
-  if (!settings().pushOnExit) return;
   await flushSaves().catch(() => {});
   await api.gitCheckpoint().catch(() => {});
-  await api.gitPush().catch(() => {});
+  if (syncEnabled() && settings().pushOnExit) {
+    await api.gitPush().catch(() => {});
+  }
 }

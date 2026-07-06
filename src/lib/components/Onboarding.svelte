@@ -9,6 +9,14 @@
 
   let step = $state(1);
   let error = $state("");
+  let localOnly = $state(false);
+
+  function skipGithub() {
+    localOnly = true;
+    error = "";
+    step = 3;
+    defaultFolder();
+  }
 
   // --- Step 1: GitHub login (browser OAuth, device flow as fallback) ---
   let device = $state<DeviceCode | null>(null);
@@ -123,7 +131,8 @@
 
   async function defaultFolder() {
     try {
-      folder = await join(await documentDir(), "PugDock");
+      // Reuse the existing workspace folder when connecting GitHub later.
+      folder = app.config?.workspace_path ?? (await join(await documentDir(), "PugDock"));
       await inspect();
     } catch {
       folder = "";
@@ -153,22 +162,28 @@
   }
 
   async function setUpWorkspace() {
-    if (!repo || !user) return;
+    if (!localOnly && (!repo || !user)) return;
     error = "";
     settingUp = true;
     try {
       await api.createWorkspace(folder);
-      await api.gitInitWorkspace(
-        repo.clone_url,
-        user.name ?? user.login,
-        `${user.id}+${user.login}@users.noreply.github.com`,
-      );
-      const cfg = await api.getConfig();
-      cfg.repo_owner = owner;
-      cfg.repo_name = repoName.trim();
-      cfg.settings = { ...cfg.settings, repoHtmlUrl: repo.html_url, githubLogin: user.login };
-      await api.setConfig(cfg);
-      app.config = cfg;
+      if (localOnly) {
+        // Local checkpoints still work without GitHub; ignore if git is missing.
+        await api.gitInitWorkspace(null, "PugDock", "pugdock@local").catch(() => {});
+        app.config = await api.getConfig();
+      } else if (repo && user) {
+        await api.gitInitWorkspace(
+          repo.clone_url,
+          user.name ?? user.login,
+          `${user.id}+${user.login}@users.noreply.github.com`,
+        );
+        const cfg = await api.getConfig();
+        cfg.repo_owner = owner;
+        cfg.repo_name = repoName.trim();
+        cfg.settings = { ...cfg.settings, repoHtmlUrl: repo.html_url, githubLogin: user.login };
+        await api.setConfig(cfg);
+        app.config = cfg;
+      }
       api.rebuildIndex().catch(() => {});
       setupDone = true;
     } catch (e) {
@@ -232,6 +247,7 @@
           PugDock asks for permission to create and sync one private repository.
           It never touches your other repos' content.
         </p>
+        <button class="ghost" onclick={skipGithub}>Skip — use PugDock locally, without sync</button>
       {:else if authState === "browser"}
         <p>Finish signing in with GitHub in your browser…</p>
         <p class="dim">PugDock will continue automatically once you authorize.</p>
@@ -282,11 +298,15 @@
         <button onclick={chooseFolder}>Choose folder</button>
       </div>
       {#if folderWarning}<p class="warn">{folderWarning}</p>{/if}
-      {#if setupDone && repo}
+      {#if setupDone}
         <div class="summary">
           <div><span class="dim">Local folder</span> <code>{folder}</code></div>
-          <div><span class="dim">GitHub repo</span> <code>{repo.full_name}</code> (private)</div>
-          <div><span class="dim">Sync</span> Enabled</div>
+          {#if repo}
+            <div><span class="dim">GitHub repo</span> <code>{repo.full_name}</code> (private)</div>
+            <div><span class="dim">Sync</span> Enabled</div>
+          {:else}
+            <div><span class="dim">Sync</span> Off — connect GitHub anytime in Settings</div>
+          {/if}
         </div>
         <button class="primary" onclick={() => (step = 4)}>Continue</button>
       {:else}

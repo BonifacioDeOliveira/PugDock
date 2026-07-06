@@ -149,7 +149,7 @@ export const api = {
   deleteSecret: (name: string) => invoke<void>("delete_secret", { name }),
 
   // git / sync
-  gitInitWorkspace: (remoteUrl: string, userName: string, userEmail: string) =>
+  gitInitWorkspace: (remoteUrl: string | null, userName: string, userEmail: string) =>
     invoke<void>("git_init_workspace", { remoteUrl, userName, userEmail }),
   gitCheckpoint: (message?: string) => invoke<boolean>("git_checkpoint", { message: message ?? null }),
   gitPush: () => invoke<void>("git_push"),

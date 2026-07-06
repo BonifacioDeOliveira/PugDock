@@ -107,17 +107,27 @@
 <div class="panel">
   <section>
     <h3>Account</h3>
-    <div class="row"><span>GitHub</span><span>Connected as {s.githubLogin ?? "—"}</span></div>
-    <div class="row">
-      <span>Repository</span>
-      <span>{app.config?.repo_owner}/{app.config?.repo_name} (private)</span>
-    </div>
-    <div class="btns">
-      {#if s.repoHtmlUrl}
-        <button onclick={() => s.repoHtmlUrl && openUrl(s.repoHtmlUrl)}>Open repo on GitHub</button>
-      {/if}
-      <button onclick={reconnectGithub}>Reconnect GitHub</button>
-    </div>
+    {#if app.config?.repo_name}
+      <div class="row"><span>GitHub</span><span>Connected as {s.githubLogin ?? "—"}</span></div>
+      <div class="row">
+        <span>Repository</span>
+        <span>{app.config?.repo_owner}/{app.config?.repo_name} (private)</span>
+      </div>
+      <div class="btns">
+        {#if s.repoHtmlUrl}
+          <button onclick={() => s.repoHtmlUrl && openUrl(s.repoHtmlUrl)}>Open repo on GitHub</button>
+        {/if}
+        <button onclick={reconnectGithub}>Reconnect GitHub</button>
+      </div>
+    {:else}
+      <p class="dim">
+        Sync is off — your workspace lives only on this computer. Connect GitHub to
+        back it up and sync it to a private repository.
+      </p>
+      <div class="btns">
+        <button class="primary" onclick={reconnectGithub}>Connect GitHub</button>
+      </div>
+    {/if}
   </section>
 
   <section>

@@ -64,10 +64,12 @@ async fn status(root: &Path) -> Result<SyncStatus> {
 
 // ---- Commands ----
 
+/// Initialize the workspace repo. With a remote URL, wires origin and pushes;
+/// without one (local-only mode) it still creates local checkpoint history.
 #[tauri::command]
 pub async fn git_init_workspace(
     app: tauri::AppHandle,
-    remote_url: String,
+    remote_url: Option<String>,
     user_name: String,
     user_email: String,
 ) -> Result<()> {
@@ -77,16 +79,20 @@ pub async fn git_init_workspace(
     }
     run_git(&root, &["config", "user.name", &user_name]).await?;
     run_git(&root, &["config", "user.email", &user_email]).await?;
-    // set-url if origin exists, add otherwise
-    if run_git(&root, &["remote", "set-url", "origin", &remote_url]).await.is_err() {
-        run_git(&root, &["remote", "add", "origin", &remote_url]).await?;
+    if let Some(url) = &remote_url {
+        // set-url if origin exists, add otherwise
+        if run_git(&root, &["remote", "set-url", "origin", url]).await.is_err() {
+            run_git(&root, &["remote", "add", "origin", url]).await?;
+        }
     }
     run_git(&root, &["add", "-A"]).await?;
     let st = status(&root).await?;
     if st.dirty {
         run_git(&root, &["commit", "-m", "pugdock: initialize workspace"]).await?;
     }
-    run_git(&root, &["push", "-u", "origin", "main"]).await?;
+    if remote_url.is_some() {
+        run_git(&root, &["push", "-u", "origin", "main"]).await?;
+    }
     Ok(())
 }
 

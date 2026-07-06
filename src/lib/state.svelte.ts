@@ -55,6 +55,11 @@ export function settings(): Settings & typeof DEFAULT_SETTINGS {
   return { ...DEFAULT_SETTINGS, ...(app.config?.settings ?? {}) };
 }
 
+/** GitHub sync is optional — enabled only when a repo was linked. */
+export function syncEnabled(): boolean {
+  return !!app.config?.repo_name;
+}
+
 export async function saveSettings(patch: Partial<Settings>) {
   if (!app.config) return;
   app.config.settings = { ...app.config.settings, ...patch };
@@ -71,6 +76,10 @@ export function toast(msg: string) {
 }
 
 export function applyStatus(st: SyncStatus) {
+  if (!syncEnabled()) {
+    app.syncState = "saved";
+    return;
+  }
   app.conflicts = st.conflicts;
   if (st.conflicts.length > 0) {
     app.syncState = "needs-review";
