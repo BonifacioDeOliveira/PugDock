@@ -1,6 +1,6 @@
 <script lang="ts">
   import { api } from "$lib/api";
-  import { app, applyStatus } from "$lib/state.svelte";
+  import { app, applyStatus, replaceTabContent } from "$lib/state.svelte";
 
   let compare = $state<{ path: string; local: string; github: string } | null>(null);
   let busy = $state(false);
@@ -11,7 +11,7 @@
       applyStatus(await api.gitResolveConflict(path, side));
       compare = null;
       const tab = app.tabs.find((t) => t.path === path);
-      if (tab && tab.kind === "text") tab.content = await api.readFile(path);
+      if (tab && tab.kind === "text") replaceTabContent(path, await api.readFile(path));
       if (app.conflicts.length === 0) {
         await api.gitPush().catch(() => {});
         applyStatus(await api.gitStatus());

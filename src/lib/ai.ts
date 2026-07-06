@@ -106,6 +106,24 @@ export function askPugdock(question: string, contextBlocks: { path: string; text
   );
 }
 
+/** Continue an unfinished note from where it stops. */
+export function continueWriting(content: string) {
+  return run(
+    "balanced",
+    `You continue a developer's Markdown note from where it stops, matching its tone, structure and language. Reply with ONLY the continuation text — do not repeat existing content.`,
+    content.slice(-12000),
+  );
+}
+
+/** Generate a complete note from a request ("write a note about…"). */
+export function draftNote(request: string) {
+  return run(
+    "balanced",
+    `You write a complete, well-structured Markdown note for a developer's personal workspace, based on their request. Start with a single "# " title line. Be practical and concrete. Reply with ONLY the note content.`,
+    request,
+  );
+}
+
 export const ADR_TEMPLATE = `# ADR: <title>
 
 ## Status

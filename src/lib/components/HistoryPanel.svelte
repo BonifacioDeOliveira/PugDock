@@ -1,6 +1,6 @@
 <script lang="ts">
   import { api, type Checkpoint } from "$lib/api";
-  import { app } from "$lib/state.svelte";
+  import { app, replaceTabContent } from "$lib/state.svelte";
 
   let checkpoints = $state<Checkpoint[]>([]);
   let preview = $state<{ hash: string; content: string } | null>(null);
@@ -24,8 +24,7 @@
   async function restore() {
     if (!preview || !forFile) return;
     await api.writeFile(forFile, preview.content);
-    const tab = app.tabs.find((t) => t.path === forFile);
-    if (tab) tab.content = preview.content;
+    replaceTabContent(forFile, preview.content);
     preview = null;
   }
 </script>

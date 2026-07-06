@@ -1,6 +1,6 @@
 <script lang="ts">
   import { api, errorMessage, type Model } from "$lib/api";
-  import { app, openFile, refreshTree, settings, saveSettings, toast, isTextFile } from "$lib/state.svelte";
+  import { app, openFile, refreshTree, settings, saveSettings, replaceTabContent, toast, isTextFile } from "$lib/state.svelte";
   import * as ai from "$lib/ai";
 
   let question = $state("");
@@ -58,8 +58,7 @@
         const fm = `---\ntype: ${labels.type}\ntags: [${(labels.tags ?? []).join(", ")}]\n${labels.project ? `project: ${labels.project}\n` : ""}title: ${labels.title}\n---\n\n`;
         const body = f.content.replace(/^---\n[\s\S]*?\n---\n\n?/, "");
         await api.writeFile(f.path, fm + body);
-        const tab = app.tabs.find((t) => t.path === f.path);
-        if (tab) tab.content = fm + body;
+        replaceTabContent(f.path, fm + body);
       } else {
         await api.writeFile(`${f.path}.pugdock.json`, JSON.stringify(labels, null, 2) + "\n");
         await refreshTree();
@@ -90,8 +89,7 @@
       if (!f) return;
       const improved = await ai.enrichNote(f.content);
       await api.writeFile(f.path, improved);
-      const tab = app.tabs.find((t) => t.path === f.path);
-      if (tab) tab.content = improved;
+      replaceTabContent(f.path, improved);
       toast("Note enriched. Previous version is in history.");
     });
 

@@ -17,6 +17,17 @@ export interface Tab {
   content: string; // text content, or base64 for pdf/image
   dirty: boolean;
   preview: boolean; // markdown rendered view instead of editor
+  /** bumped when content is replaced from outside the editor (AI, restore…) */
+  version: number;
+}
+
+/** Replace a tab's content from outside the editor and force it to re-render. */
+export function replaceTabContent(path: string, content: string) {
+  const tab = app.tabs.find((t) => t.path === path);
+  if (tab) {
+    tab.content = content;
+    tab.version++;
+  }
 }
 
 export const DEFAULT_SETTINGS: Required<Pick<
@@ -132,7 +143,7 @@ async function loadTab(path: string): Promise<Tab> {
   if (existing) return existing;
   const kind = fileKind(path);
   const content = kind === "text" ? await api.readFile(path) : await api.readFileBase64(path);
-  const tab: Tab = { path, name: path.split("/").pop() ?? path, kind, content, dirty: false, preview: false };
+  const tab: Tab = { path, name: path.split("/").pop() ?? path, kind, content, dirty: false, preview: false, version: 0 };
   app.tabs.push(tab);
   return tab;
 }

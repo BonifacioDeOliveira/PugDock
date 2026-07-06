@@ -13,6 +13,7 @@
   import AiPanel from "./AiPanel.svelte";
   import HistoryPanel from "./HistoryPanel.svelte";
   import ConflictDialog from "./ConflictDialog.svelte";
+  import AiFab from "./AiFab.svelte";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { openUrl } from "@tauri-apps/plugin-opener";
@@ -318,7 +319,7 @@
       <div class="content" class:split={!!splitTab}>
         <div class="pane">
           {#if activeTab}
-            {#key activeTab.path + (activeTab.preview ? ":p" : ":e")}
+            {#key `${activeTab.path}:${activeTab.version}:${activeTab.preview ? "p" : "e"}`}
               {@render fileView(activeTab, activeTab.preview)}
             {/key}
           {:else}
@@ -340,7 +341,7 @@
               <button class="ghost" title="Close split" onclick={() => (app.split = null)}>×</button>
             </div>
             <div class="pane-body">
-              {#key splitTab.path + (app.split.preview ? ":p" : ":e")}
+              {#key `${splitTab.path}:${splitTab.version}:${app.split.preview ? "p" : "e"}`}
                 {@render fileView(splitTab, app.split.preview)}
               {/key}
             </div>
@@ -434,6 +435,8 @@
 {#if app.conflicts.length}
   <ConflictDialog />
 {/if}
+
+<AiFab />
 
 {#if app.toast}
   <div class="toast">{app.toast}</div>
