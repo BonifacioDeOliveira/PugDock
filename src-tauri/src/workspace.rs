@@ -4,12 +4,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::Manager;
 
-pub const WORKSPACE_DIRS: &[&str] = &[
-    "inbox", "notes", "snippets", "commands", "bugs", "adr", "runbooks", "pdfs",
-    "references", "projects", "attachments", "context", "templates", "rag",
-    ".pugdock", ".pugdock/cache", ".pugdock/embeddings", ".pugdock/thumbnails",
-];
-
 const GITIGNORE: &str = "\
 # PugDock local state - never synced
 .pugdock/
@@ -30,25 +24,6 @@ tokens
 *.token
 
 .DS_Store
-";
-
-const WORKSPACE_README: &str = "\
-# PugDock Workspace
-
-This repository is managed by [PugDock](https://github.com/pugdock) - a lightweight
-desktop workspace for developers. Files here are synced automatically from the app.
-
-- `inbox/` - unsorted captures
-- `notes/` - general notes
-- `snippets/` - code snippets
-- `commands/` - useful commands
-- `bugs/` - bug notes
-- `adr/` - architecture decision records
-- `runbooks/` - operational runbooks
-- `pdfs/` - PDF documents
-- `references/` - reference material and summaries
-- `projects/` - per-project context
-- `context/` - AI-generated context files
 ";
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -189,20 +164,14 @@ fn read_tree(dir: &Path, root: &Path) -> Result<Vec<TreeEntry>> {
 
 /// Create the standard PugDock folder structure inside `path` (idempotent).
 pub fn scaffold(path: &Path) -> Result<()> {
+    // The visible tree starts EMPTY: folders like notes/ are created on
+    // demand when something is saved into them (write_file creates parents).
+    // Only hidden internals are prepared here.
     fs::create_dir_all(path)?;
-    for d in WORKSPACE_DIRS {
-        fs::create_dir_all(path.join(d))?;
+    fs::create_dir_all(path.join(".pugdock/cache"))?;
+    if !path.join(".gitignore").exists() {
+        fs::write(path.join(".gitignore"), GITIGNORE)?;
     }
-    let write_if_missing = |p: PathBuf, content: &str| -> Result<()> {
-        if !p.exists() {
-            fs::write(p, content)?;
-        }
-        Ok(())
-    };
-    write_if_missing(path.join(".gitignore"), GITIGNORE)?;
-    write_if_missing(path.join("README.md"), WORKSPACE_README)?;
-    write_if_missing(path.join("rag/manifest.json"), "{\n  \"version\": 1\n}\n")?;
-    write_if_missing(path.join("rag/chunks.jsonl"), "")?;
     Ok(())
 }
 

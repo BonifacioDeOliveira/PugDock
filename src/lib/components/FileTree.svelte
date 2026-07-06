@@ -64,8 +64,8 @@
       >
         <span class="chevron">{entry.is_dir ? (open[entry.path] ? "▾" : "▸") : ""}</span>
         <span class="name" class:dim={entry.is_dir}>{entry.name}</span>
-        {#if app.pins.includes(entry.path)}<span class="badge" title="Pinned">📌</span>{/if}
-        {#if app.syncExcluded.includes(entry.path)}<span class="badge" title="Local only, not synced">⛔</span>{/if}
+        {#if app.pins.includes(entry.path)}<span class="badge" data-tip="Pinned">📌</span>{/if}
+        {#if app.syncExcluded.includes(entry.path)}<span class="badge" data-tip="Local only, not synced">⛔</span>{/if}
       </button>
       {#if entry.is_dir && open[entry.path] && entry.children}
         <FileTree entries={entry.children} level={level + 1} {onmenu} {onrename} {onmove} />

@@ -279,13 +279,13 @@
           {#if active && (app.config?.workspaces.length ?? 0) > 1}
             <button
               class="ws-close"
-              title="Close workspace (files stay on disk)"
+              data-tip="Close workspace (files stay on disk)"
               onclick={() => closeWorkspace(ws.path).catch((e) => toast(errorMessage(e)))}
             >×</button>
           {/if}
         </div>
       {/each}
-      <button class="ghost ws-add" title="New workspace / open folder" onclick={(e) => { e.stopPropagation(); wsMenu = !wsMenu; }}>＋</button>
+      <button class="ghost ws-add" data-tip="New workspace / open folder" onclick={(e) => { e.stopPropagation(); wsMenu = !wsMenu; }}>＋</button>
       {#if wsMenu}
         <div class="ctx ws-menu">
           <button onclick={() => pickAndAdd(true)}>New workspace…</button>
@@ -302,7 +302,7 @@
         class="ghost sync"
         class:warn={app.syncState === "offline" || app.syncState === "needs-review"}
         onclick={() => syncNow().catch((e) => toast(errorMessage(e)))}
-        title="Sync now"
+        data-tip="Sync now"
       >
         {SYNC_LABEL[app.syncState]}{app.syncState === "offline" && app.pendingChanges
           ? `, ${app.pendingChanges} change${app.pendingChanges > 1 ? "s" : ""} waiting`
@@ -312,12 +312,12 @@
       <button
         class="ghost sync"
         onclick={() => (app.panel = "settings")}
-        title="Sync is off. Connect GitHub in Settings"
+        data-tip="Sync is off. Connect GitHub in Settings"
       >
         {app.syncState === "saving" ? "Saving…" : "Local only"}
       </button>
     {:else}
-      <span class="ghost sync" title="Opened folder: PugDock edits files but never touches this folder's git">
+      <span class="ghost sync" data-tip="Opened folder: PugDock edits files but never touches this folder's git">
         {app.syncState === "saving" ? "Saving…" : "Folder"}
       </span>
     {/if}
@@ -325,7 +325,8 @@
     <button class="ghost" onclick={() => (app.panel = app.panel === "ai" ? null : "ai")}>AI</button>
     <button
       class="ghost settings-btn"
-      title="Settings"
+      aria-label="Settings"
+      data-tip="Settings"
       onclick={() => (app.panel = app.panel === "settings" ? null : "settings")}
     >
       <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -347,14 +348,14 @@
           </svg>
           New note
         </button>
-        <button class="new-folder" title="New folder" onclick={() => menuActions.newFolder(null)}>
+        <button class="new-folder" aria-label="New folder" data-tip="New folder" onclick={() => menuActions.newFolder(null)}>
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
             <line x1="12" y1="11" x2="12" y2="17" />
             <line x1="9" y1="14" x2="15" y2="14" />
           </svg>
         </button>
-        <button class="new-folder" title="Open folder as workspace" onclick={() => pickAndAdd(false)}>
+        <button class="new-folder" aria-label="Open folder as workspace" data-tip="Open folder as workspace" onclick={() => pickAndAdd(false)}>
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
             <polyline points="9 13 12 10 15 13" />
@@ -366,7 +367,7 @@
         <div class="aside-head"><span>Pinned</span></div>
         <div class="quick-list">
           {#each app.pins as p (p)}
-            <button class="quick-item" onclick={() => openFile(p)} title={p}>📌 {p.split("/").pop()}</button>
+            <button class="quick-item" onclick={() => openFile(p)} data-tip={p}>📌 {p.split("/").pop()}</button>
           {/each}
         </div>
       {/if}
@@ -374,13 +375,13 @@
         <div class="aside-head"><span>Recent</span></div>
         <div class="quick-list">
           {#each app.recent.slice(0, 5) as p (p)}
-            <button class="quick-item" onclick={() => openFile(p)} title={p}>{p.split("/").pop()}</button>
+            <button class="quick-item" onclick={() => openFile(p)} data-tip={p}>{p.split("/").pop()}</button>
           {/each}
         </div>
       {/if}
       <div class="aside-head">
         <span>Files</span>
-        <button class="ghost" title="New file" onclick={() => menuActions.newFile(null)}>＋</button>
+        <button class="ghost" data-tip="New file" onclick={() => menuActions.newFile(null)}>＋</button>
       </div>
       <div class="tree">
         <FileTree entries={app.tree} onmenu={showMenu} onrename={(e) => menuActions.rename(e)} onmove={moveFile} />
@@ -444,7 +445,7 @@
                     {#if paneTab.path.endsWith(".md")}
                       <button
                         class="ghost"
-                        title={paneTab.preview ? "Edit" : "Preview"}
+                        data-tip={paneTab.preview ? "Edit" : "Preview"}
                         onclick={() => (paneTab.preview = !paneTab.preview)}
                       >
                         {paneTab.preview ? "✏️ Edit" : "👁 Preview"}
@@ -452,7 +453,7 @@
                     {/if}
                     <button
                       class="ghost"
-                      title="Move to the other group (⌘\)"
+                      data-tip="Move to the other group (⌘\)"
                       onclick={() => moveTabToPane(paneTab.path, pi === 0 ? 1 : 0)}
                     >
                       ⫽

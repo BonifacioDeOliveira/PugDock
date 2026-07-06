@@ -197,7 +197,7 @@
       {#if msgs.length > 0}
         <button
           class="ghost new-chat"
-          title="Reset the conversation and start a new chat. Current messages are discarded"
+          data-tip="Reset the conversation and start a new chat. Current messages are discarded"
           onclick={() => (msgs = [])}
         >
           <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -208,7 +208,7 @@
           New chat
         </button>
       {/if}
-      <button class="ghost" onclick={() => (open = false)} title="Close (keeps the conversation)">×</button>
+      <button class="ghost" onclick={() => (open = false)} data-tip="Close (keeps the conversation)">×</button>
     </div>
 
     {#if !enabled}
@@ -282,7 +282,7 @@
   </div>
 {/if}
 
-<button class="ai-fab" class:open onclick={() => (open = !open)} title="PugDock AI">
+<button class="ai-fab" class:open onclick={() => (open = !open)} data-tip="PugDock AI" data-tip-pos="top">
   {#if open}
     ×
   {:else}
