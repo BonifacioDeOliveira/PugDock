@@ -3,13 +3,16 @@ use crate::secrets;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-/// Public OAuth-app client id (safe to embed). Set at build time:
-///   PUGDOCK_GITHUB_CLIENT_ID=Ov23li... npm run tauri build
-/// The OAuth app must have "Device Flow" enabled. See README.
-const CLIENT_ID: &str = match option_env!("PUGDOCK_GITHUB_CLIENT_ID") {
-    Some(id) => id,
-    None => "",
-};
+/// Public OAuth-app client id (safe to embed). The OAuth app must have
+/// "Device Flow" enabled. See README. Resolution order:
+/// 1. runtime env var (handy in dev — no rebuild needed)
+/// 2. compile-time env var (how release builds embed it)
+fn client_id() -> String {
+    std::env::var("PUGDOCK_GITHUB_CLIENT_ID")
+        .ok()
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| option_env!("PUGDOCK_GITHUB_CLIENT_ID").unwrap_or("").to_string())
+}
 
 const API: &str = "https://api.github.com";
 
@@ -61,15 +64,16 @@ pub struct DeviceCode {
 
 #[tauri::command]
 pub async fn github_device_start() -> Result<DeviceCode> {
-    if CLIENT_ID.is_empty() {
+    let client_id = client_id();
+    if client_id.is_empty() {
         return Err(AppError::Github(
-            "This build has no GitHub app configured. Set PUGDOCK_GITHUB_CLIENT_ID at build time (see README).".into(),
+            "No GitHub app configured. Set the PUGDOCK_GITHUB_CLIENT_ID environment variable and restart (see README).".into(),
         ));
     }
     let resp = client()
         .post("https://github.com/login/device/code")
         .header("Accept", "application/json")
-        .json(&json!({ "client_id": CLIENT_ID, "scope": "repo read:org" }))
+        .json(&json!({ "client_id": client_id, "scope": "repo read:org" }))
         .send()
         .await?;
     Ok(resp.json().await?)
@@ -82,7 +86,7 @@ pub async fn github_device_poll(device_code: String) -> Result<String> {
         .post("https://github.com/login/oauth/access_token")
         .header("Accept", "application/json")
         .json(&json!({
-            "client_id": CLIENT_ID,
+            "client_id": client_id(),
             "device_code": device_code,
             "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
         }))
