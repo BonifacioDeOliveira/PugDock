@@ -45,7 +45,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDZEMUVFRDFENTRGOUIyOEUKUldTT3N2bFVIZTBlYmVuWkhQaTRFdlkyRnZLZ3dpOS9lRnpzQUJWZktDcGg0bzB4R3ROc3FYWTAK",
       "endpoints": [
-        "https://github.com/bonifaciofilho/PugDock/releases/latest/download/latest.json"
+        "https://github.com/BonifacioDeOliveira/PugDock/releases/latest/download/latest.json"
       ]
     }
   }
