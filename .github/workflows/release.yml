@@ -50,7 +50,8 @@ jobs:
 
       # Builds, signs updater artifacts, creates/updates the GitHub Release
       # for the pushed tag, and uploads bundles + latest.json.
-      - uses: tauri-apps/tauri-action@v0
+      - id: tauri
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -65,3 +66,19 @@ jobs:
           releaseDraft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
           args: ${{ matrix.args }}
+
+      # Human-friendly installer names: AppleSilicon / AppleIntel instead of
+      # aarch64 / x64. Only .dmg files are renamed; the updater artifacts and
+      # latest.json keep their canonical names so in-app updates never break.
+      - name: Friendly installer names
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api "/repos/${{ github.repository }}/releases/tags/${{ github.ref_name }}"             --jq '.assets[] | select(.name | endswith(".dmg")) | [.id, .name] | @tsv' |
+          while IFS=$'\t' read -r id name; do
+            new=$(echo "$name" | sed -e 's/aarch64/AppleSilicon/' -e 's/x64/AppleIntel/')
+            if [ "$new" != "$name" ]; then
+              gh api -X PATCH "/repos/${{ github.repository }}/releases/assets/$id" -f name="$new" > /dev/null
+              echo "renamed: $name -> $new"
+            fi
+          done
