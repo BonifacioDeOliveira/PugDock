@@ -111,6 +111,11 @@
     const rootPath = await api.syncRoot().catch(() => null);
     if (rootPath && !list.some((w) => w.path === rootPath)) {
       list.push({ ...list[0], path: rootPath, name: "No workspace" });
+      // All is a pseudo-workspace rooted at the sync root: notes created
+      // here are first-class files that belong to no workspace.
+      if (rootPath !== app.config?.workspace_path) {
+        await switchWorkspace(rootPath).catch(() => {});
+      }
     }
     const trees = await Promise.all(
       list.map(async (ws) => ({
@@ -122,7 +127,8 @@
   }
 
   async function openFromAll(ws: WorkspaceEntry, path: string) {
-    allMode = false;
+    // Root ("No workspace") items open without leaving the All view.
+    if (ws.name !== "No workspace") allMode = false;
     if (ws.path !== app.config?.workspace_path) {
       await switchWorkspace(ws.path).catch((e) => toast(errorMessage(e)));
     }
@@ -155,6 +161,7 @@
       if (!treeHas(path)) {
         await api.writeFile(path, "");
         await refreshTree();
+        if (allMode) await showAll();
         await openFile(path);
         return;
       }
@@ -182,6 +189,7 @@
     try {
       await fn();
       await refreshTree();
+      if (allMode) await showAll();
     } catch (e) {
       toast(errorMessage(e));
     }

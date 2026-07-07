@@ -343,23 +343,27 @@ pub fn add_workspace(app: tauri::AppHandle, path: String, managed: bool) -> Resu
 }
 
 fn set_active(cfg: &mut AppConfig, path: &str) {
-    if let Some(entry) = cfg.workspaces.iter().find(|w| w.path == path) {
-        cfg.workspace_path = Some(entry.path.clone());
-        cfg.repo_owner = entry.repo_owner.clone();
-        cfg.repo_name = entry.repo_name.clone();
-        // Sync is a property of the shared root, not of one tab: a managed
-        // workspace without repo fields inherits them from any sibling so
-        // checkpoints keep running on freshly created workspaces.
-        if entry.managed && cfg.repo_name.is_none() {
-            if let Some((o, n)) = cfg
-                .workspaces
-                .iter()
-                .filter(|w| w.managed)
-                .find_map(|w| w.repo_owner.clone().zip(w.repo_name.clone()))
-            {
-                cfg.repo_owner = Some(o);
-                cfg.repo_name = Some(n);
-            }
+    let entry = cfg.workspaces.iter().find(|w| w.path == path).cloned();
+    // The sync root is activatable without being a tab: the All view roots
+    // file ops there, so notes can live in no workspace.
+    if entry.is_none() && sync_root(cfg).as_deref() != Some(Path::new(path)) {
+        return;
+    }
+    cfg.workspace_path = Some(path.to_string());
+    cfg.repo_owner = entry.as_ref().and_then(|e| e.repo_owner.clone());
+    cfg.repo_name = entry.as_ref().and_then(|e| e.repo_name.clone());
+    // Sync is a property of the shared root, not of one tab: a managed
+    // workspace (or the root itself) without repo fields inherits them from
+    // any sibling so checkpoints keep running everywhere.
+    if entry.as_ref().is_none_or(|e| e.managed) && cfg.repo_name.is_none() {
+        if let Some((o, n)) = cfg
+            .workspaces
+            .iter()
+            .filter(|w| w.managed)
+            .find_map(|w| w.repo_owner.clone().zip(w.repo_name.clone()))
+        {
+            cfg.repo_owner = Some(o);
+            cfg.repo_name = Some(n);
         }
     }
 }
