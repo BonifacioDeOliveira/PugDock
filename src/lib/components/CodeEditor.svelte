@@ -130,7 +130,9 @@
 </script>
 
 {#if sensitive}
-  <div class="banner">This file looks like it contains secrets. It is opened read-only and is never synced or sent to AI.</div>
+  <div class="banner" data-tip="This file looks like it contains secrets, so PugDock opens it read-only and never syncs it or sends it to AI">
+    🔒 Secrets file · read-only
+  </div>
 {/if}
 {#if isMd && !sensitive}
   <div class="md-toolbar">
@@ -198,10 +200,14 @@
     flex-shrink: 0;
   }
   .banner {
-    background: color-mix(in srgb, var(--warn) 15%, var(--bg));
+    background: color-mix(in srgb, var(--warn) 12%, var(--bg));
     color: var(--warn);
-    padding: 6px 12px;
-    font-size: 12px;
+    padding: 2px 10px;
+    font-size: 10.5px;
+    line-height: 1.6;
     border-bottom: 1px solid var(--border);
+    flex: 0 0 auto !important;
+    width: fit-content;
+    border-radius: 0 0 6px 0;
   }
 </style>
