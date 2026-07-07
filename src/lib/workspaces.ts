@@ -41,9 +41,12 @@ export async function switchWorkspace(path: string) {
   await activate(path);
 }
 
-/** The on-disk home of the synced repository (chosen once in onboarding). */
+/** The sync root: the TOPMOST managed workspace, where .git and the
+ *  remote live. New workspaces and GitHub linking always target it. */
 export function repoRoot(): string | null {
-  return app.config?.workspaces.find((w) => w.managed)?.path ?? app.config?.workspace_path ?? null;
+  const managed = (app.config?.workspaces ?? []).filter((w) => w.managed);
+  if (!managed.length) return app.config?.workspace_path ?? null;
+  return managed.reduce((a, b) => (a.path.split("/").length <= b.path.split("/").length ? a : b)).path;
 }
 
 /** Create a named workspace inside the synced repo root. No location to

@@ -81,6 +81,67 @@ impl AppConfig {
     }
 }
 
+/// The sync root: the topmost managed workspace (where .git and the
+/// remote live). Every other workspace is a folder inside it.
+pub fn sync_root(cfg: &AppConfig) -> Option<PathBuf> {
+    cfg.workspaces
+        .iter()
+        .filter(|w| w.managed)
+        .map(|w| PathBuf::from(&w.path))
+        .min_by_key(|p| p.components().count())
+}
+
+const REGISTRY: &str = ".pugdock-workspaces.json";
+
+/// The workspace list is part of the synced data: written at the sync root
+/// so other devices reconstruct the same tabs.
+fn write_registry(cfg: &AppConfig) {
+    let Some(root) = sync_root(cfg) else { return };
+    let entries: Vec<serde_json::Value> = cfg
+        .workspaces
+        .iter()
+        .filter(|w| w.managed)
+        .filter_map(|w| {
+            let rel = Path::new(&w.path).strip_prefix(&root).ok()?;
+            Some(serde_json::json!({ "name": w.name, "path": rel.to_string_lossy().replace('\\', "/") }))
+        })
+        .collect();
+    let body = serde_json::to_string_pretty(&entries).unwrap_or_default() + "\n";
+    // avoid needless checkpoint churn
+    if fs::read_to_string(root.join(REGISTRY)).map(|c| c == body).unwrap_or(false) {
+        return;
+    }
+    let _ = fs::write(root.join(REGISTRY), body);
+}
+
+/// Adopt workspaces found in the synced registry (e.g. after cloning on a
+/// new device): entries missing locally are added, never removed.
+fn merge_registry(cfg: &mut AppConfig) {
+    let Some(root) = sync_root(cfg) else { return };
+    let Ok(content) = fs::read_to_string(root.join(REGISTRY)) else { return };
+    let Ok(entries) = serde_json::from_str::<Vec<serde_json::Value>>(&content) else { return };
+    let (owner, repo) = cfg
+        .workspaces
+        .iter()
+        .find(|w| Path::new(&w.path) == root)
+        .map(|w| (w.repo_owner.clone(), w.repo_name.clone()))
+        .unwrap_or((None, None));
+    for e in entries {
+        let Some(rel) = e["path"].as_str() else { continue };
+        let abs = if rel.is_empty() { root.clone() } else { root.join(rel) };
+        let abs_s = abs.to_string_lossy().to_string();
+        if abs.is_dir() && !cfg.workspaces.iter().any(|w| w.path == abs_s) {
+            cfg.workspaces.push(WorkspaceEntry {
+                path: abs_s,
+                name: e["name"].as_str().unwrap_or("Workspace").into(),
+                repo_owner: owner.clone(),
+                repo_name: repo.clone(),
+                managed: true,
+            });
+        }
+    }
+}
+
 fn config_file(app: &tauri::AppHandle) -> Result<PathBuf> {
     let dir = app
         .path()
@@ -97,12 +158,14 @@ pub fn load_config(app: &tauri::AppHandle) -> Result<AppConfig> {
         Err(_) => AppConfig::default(),
     };
     cfg.normalize();
+    merge_registry(&mut cfg);
     Ok(cfg)
 }
 
 pub fn save_config(app: &tauri::AppHandle, cfg: &AppConfig) -> Result<()> {
     let mut cfg = cfg.clone();
     cfg.normalize();
+    write_registry(&cfg);
     let path = config_file(app)?;
     fs::write(path, serde_json::to_string_pretty(&cfg).unwrap())?;
     Ok(())

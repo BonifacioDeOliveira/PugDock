@@ -73,9 +73,24 @@ pub async fn git_init_workspace(
     user_name: String,
     user_email: String,
 ) -> Result<()> {
-    let root = workspace::workspace_root(&app)?;
+    let mut root = workspace::workspace_root(&app)?;
     if !root.join(".git").exists() {
-        run_git(&root, &["init", "-b", "main"]).await?;
+        // If the folder lives inside an existing repo (e.g. a sub-workspace),
+        // NEVER init a nested repo: link the enclosing repo instead so the
+        // whole tree syncs as one.
+        match run_git(&root, &["rev-parse", "--show-toplevel"]).await {
+            Ok(top) => {
+                let top = std::path::PathBuf::from(top.trim());
+                if top != root && root.starts_with(&top) {
+                    root = top;
+                } else {
+                    run_git(&root, &["init", "-b", "main"]).await?;
+                }
+            }
+            Err(_) => {
+                run_git(&root, &["init", "-b", "main"]).await?;
+            }
+        }
     }
     run_git(&root, &["config", "user.name", &user_name]).await?;
     run_git(&root, &["config", "user.email", &user_email]).await?;
