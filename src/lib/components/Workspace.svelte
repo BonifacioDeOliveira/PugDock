@@ -66,6 +66,19 @@
     "needs-review": "Needs review",
   };
 
+  // --- workspace context menu (right-click a tab): removal needs confirm ---
+  let wsCtx = $state<{ x: number; y: number; ws: WorkspaceEntry } | null>(null);
+
+  async function removeWorkspaceGuarded(ws: WorkspaceEntry) {
+    wsCtx = null;
+    const ok = await dlgConfirm(
+      `Remove the workspace "${ws.name}" from PugDock?\n\nIts files stay on disk (${ws.path}); only the tab is removed. Are you sure?`,
+      { title: "Remove workspace", kind: "warning" },
+    );
+    if (!ok) return;
+    await closeWorkspace(ws.path).catch((e) => toast(errorMessage(e)));
+  }
+
   // --- drag a note/file onto a workspace tab to move it there ---
   let wsDrop = $state<string | null>(null);
 
@@ -340,7 +353,7 @@
   }
 </script>
 
-<svelte:window onkeydown={onKeydown} onclick={() => (menu = null)} />
+<svelte:window onkeydown={onKeydown} onclick={() => { menu = null; wsCtx = null; }} />
 
 <div class="workspace">
   <header>
@@ -360,6 +373,11 @@
           class:wsdrop={wsDrop === ws.path}
           style="--ws-color: {color}"
           role="presentation"
+          oncontextmenu={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            wsCtx = { x: e.clientX, y: e.clientY, ws };
+          }}
           ondragover={(e) => {
             const hasItem = dragPath || e.dataTransfer?.types.includes("text/pugdock-file");
             if (hasItem && ws.path !== app.config?.workspace_path) {
@@ -382,13 +400,6 @@
           >
             <span class="ws-dot"></span>{ws.name}{ws.managed ? "" : " 📂"}
           </button>
-          {#if active && (app.config?.workspaces.length ?? 0) > 1}
-            <button
-              class="ws-close"
-              data-tip="Close workspace (files stay on disk)"
-              onclick={() => closeWorkspace(ws.path).catch((e) => toast(errorMessage(e)))}
-            >×</button>
-          {/if}
         </div>
       {/each}
     </div>
@@ -618,6 +629,12 @@
   </div>
 </div>
 
+{#if wsCtx}
+  <div class="ctx" style="left:{wsCtx.x}px; top:{wsCtx.y}px">
+    <button class="danger" onclick={() => wsCtx && removeWorkspaceGuarded(wsCtx.ws)}>Remove workspace…</button>
+  </div>
+{/if}
+
 {#if menu}
   <div class="ctx" style="left:{menu.x}px; top:{menu.y}px">
     <button onclick={() => menu && menuActions.newFile(menu.entry)}>New file</button>
@@ -795,15 +812,6 @@
     border-radius: 50%;
     background: var(--ws-color);
     flex-shrink: 0;
-  }
-  .ws-close {
-    background: none;
-    border: none;
-    color: var(--text-dim);
-    padding: 2px 7px 2px 0;
-  }
-  .ws-close:hover {
-    color: var(--danger);
   }
   .ws-add {
     flex-shrink: 0;
