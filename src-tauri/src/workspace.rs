@@ -430,6 +430,13 @@ pub fn remove_workspace(app: tauri::AppHandle, path: String) -> Result<AppConfig
     load_config(&app)
 }
 
+/// The sync root path, for the All view's "No workspace" group.
+#[tauri::command]
+pub fn get_sync_root(app: tauri::AppHandle) -> Result<Option<String>> {
+    let cfg = load_config(&app)?;
+    Ok(sync_root(&cfg).map(|p| p.to_string_lossy().into_owned()))
+}
+
 /// Tree of any configured workspace (the All view shows every workspace).
 #[tauri::command]
 pub fn list_tree_at(app: tauri::AppHandle, root: String) -> Result<Vec<TreeEntry>> {

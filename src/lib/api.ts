@@ -153,6 +153,7 @@ export const api = {
   listFiles: (dir: string) => invoke<string[]>("list_files", { dir }),
   moveToWorkspace: (path: string, targetRoot: string) =>
     invoke<void>("move_to_workspace", { path, targetRoot }),
+  syncRoot: () => invoke<string | null>("get_sync_root"),
   listTree: () => invoke<TreeEntry[]>("list_tree"),
   listTreeAt: (root: string) => invoke<TreeEntry[]>("list_tree_at", { root }),
   readFile: (path: string) => invoke<string>("read_file", { path }),

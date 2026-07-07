@@ -42,6 +42,7 @@ pub fn run() {
             workspace::list_files,
             workspace::move_to_workspace,
             workspace::list_tree,
+            workspace::get_sync_root,
             workspace::list_tree_at,
             workspace::read_file,
             workspace::read_file_base64,

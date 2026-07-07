@@ -106,16 +106,19 @@
   async function showAll() {
     allMode = true;
     const list = [...(app.config?.workspaces ?? [])];
-    // The repo root holds items that belong to no workspace: show it last,
-    // labeled accordingly.
-    const rootPath = list.find((w) => w.managed)?.path;
-    list.sort((a, b) => (a.path === rootPath ? 1 : 0) - (b.path === rootPath ? 1 : 0));
-    allTrees = await Promise.all(
+    // Items living at the sync root belong to no workspace: shown last,
+    // labeled accordingly (list_tree_at already hides the workspace dirs).
+    const rootPath = await api.syncRoot().catch(() => null);
+    if (rootPath && !list.some((w) => w.path === rootPath)) {
+      list.push({ ...list[0], path: rootPath, name: "No workspace" });
+    }
+    const trees = await Promise.all(
       list.map(async (ws) => ({
-        ws: ws.path === rootPath ? { ...ws, name: "No workspace" } : ws,
+        ws,
         tree: await api.listTreeAt(ws.path).catch(() => []),
       })),
     );
+    allTrees = trees.filter((t) => t.ws.name !== "No workspace" || t.tree.length > 0);
   }
 
   async function openFromAll(ws: WorkspaceEntry, path: string) {
