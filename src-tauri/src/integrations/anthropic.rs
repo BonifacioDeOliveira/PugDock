@@ -228,6 +228,24 @@ pub async fn anthropic_run_stream(
         drop(stdin);
     }
     let stdout = child.stdout.take().ok_or_else(|| AppError::Other("no stdout".into()))?;
+    // stderr must be drained concurrently: with --verbose the CLI can write
+    // more than the pipe buffer, and an unread pipe would deadlock the run.
+    let stderr_tail = std::sync::Arc::new(tokio::sync::Mutex::new(String::new()));
+    if let Some(stderr) = child.stderr.take() {
+        let tail = stderr_tail.clone();
+        tokio::spawn(async move {
+            let mut lines = BufReader::new(stderr).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let mut t = tail.lock().await;
+                t.push_str(&line);
+                t.push('\n');
+                if t.len() > 4000 {
+                    let cut = t.len() - 4000;
+                    t.drain(..cut);
+                }
+            }
+        });
+    }
     let mut lines = BufReader::new(stdout).lines();
     let mut result = String::new();
     let mut streamed = String::new();
@@ -277,9 +295,15 @@ pub async fn anthropic_run_stream(
     }
     let status = child.wait().await.map_err(|e| AppError::Other(e.to_string()))?;
     if !status.success() {
-        let msg = "Claude Code could not complete the request. Check your sign-in and try again.";
+        let tail = stderr_tail.lock().await;
+        let detail = tail.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("");
+        let msg = if detail.is_empty() {
+            "Claude Code could not complete the request. Check your sign-in and try again.".to_string()
+        } else {
+            format!("Claude Code error: {detail}")
+        };
         let _ = app.emit("ai-error", serde_json::json!({ "id": id, "message": msg }));
-        return Err(AppError::Other(msg.into()));
+        return Err(AppError::Other(msg));
     }
     if result.is_empty() {
         result = streamed;

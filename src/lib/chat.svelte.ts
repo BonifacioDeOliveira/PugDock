@@ -102,6 +102,23 @@ $effect.root(() => {
       ensureDrain();
     }
   });
+  // authoritative final text: replaces whatever streamed (late deltas can
+  // arrive after the command resolves and would otherwise be dropped)
+  listen<{ id: string; text: string }>("ai-done", (e) => {
+    const last = chat.msgs[chat.msgs.length - 1];
+    if (last?.streaming && e.payload.id === String(streamSeq)) {
+      pending = "";
+      stopDrain();
+      last.text = e.payload.text;
+      chat.tick++;
+    }
+  });
+  listen<{ id: string; message: string }>("ai-error", (e) => {
+    if (e.payload.id === String(streamSeq)) {
+      chat.activity = null;
+    }
+  });
+
   let liveRefresh: ReturnType<typeof setTimeout> | undefined;
   listen<{ id: string; text: string }>("ai-activity", (e) => {
     if (e.payload.id === String(streamSeq)) {
