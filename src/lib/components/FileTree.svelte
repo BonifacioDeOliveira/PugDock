@@ -32,6 +32,7 @@
     e.stopPropagation();
     dropDir = null;
     const from = e.dataTransfer?.getData("text/pugdock-file");
+    app.treeDrag = null;
     if (from) onmove(from, dirOf(entry));
   }
 </script>
@@ -60,6 +61,7 @@
         }}
         ondragstart={(e) => {
           e.dataTransfer?.setData("text/pugdock-file", entry.path);
+          app.treeDrag = entry.path;
         }}
         ondragover={(e) => {
           if (e.dataTransfer?.types.includes("text/pugdock-file")) {

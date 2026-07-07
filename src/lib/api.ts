@@ -148,7 +148,10 @@ export const api = {
     invoke<AppConfig>("add_workspace", { path, managed }),
   setActiveWorkspace: (path: string) => invoke<AppConfig>("set_active_workspace", { path }),
   removeWorkspace: (path: string) => invoke<AppConfig>("remove_workspace", { path }),
+  renameWorkspace: (path: string, newName: string) =>
+    invoke<AppConfig>("rename_workspace", { path, newName }),
   moveWorkspace: (newPath: string) => invoke<AppConfig>("move_workspace", { newPath }),
+  adoptWorkspaces: () => invoke<AppConfig>("adopt_workspaces"),
   exportDiagnostics: () => invoke<string>("export_diagnostics"),
   listFiles: (dir: string) => invoke<string[]>("list_files", { dir }),
   moveToWorkspace: (path: string, targetRoot: string) =>

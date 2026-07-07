@@ -60,6 +60,18 @@ export async function addWorkspace(name: string) {
   await activate(path);
 }
 
+export async function renameWorkspace(path: string, newName: string) {
+  const newPath = path.slice(0, path.lastIndexOf("/") + 1) + newName;
+  await flushSaves().catch(() => {});
+  const active = path === app.config?.workspace_path;
+  if (active) stashCurrent();
+  const cached = uiCache.get(path);
+  uiCache.delete(path);
+  if (cached) uiCache.set(newPath, cached);
+  app.config = await api.renameWorkspace(path, newName);
+  if (active) await activate(newPath);
+}
+
 export async function closeWorkspace(path: string) {
   uiCache.delete(path);
   app.config = await api.removeWorkspace(path);

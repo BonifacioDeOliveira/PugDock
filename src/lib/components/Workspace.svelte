@@ -2,7 +2,7 @@
   import { api, errorMessage, type TreeEntry } from "$lib/api";
   import { checkForUpdate, type AvailableUpdate } from "$lib/update";
   import { app, openFile, openToSide, closeTab, closeEverywhere, focusTab, moveTabToPane, collapseSplit, renameOpenPath, refreshTree, settings, syncEnabled, workspaceManaged, colorFor, togglePin, saveSettings, isNoteFile, displayName, toast, type Tab } from "$lib/state.svelte";
-  import { switchWorkspace, addWorkspace, closeWorkspace } from "$lib/workspaces";
+  import { switchWorkspace, addWorkspace, closeWorkspace, renameWorkspace } from "$lib/workspaces";
   import type { WorkspaceEntry } from "$lib/api";
   import MarkdownView from "./MarkdownView.svelte";
   import { syncNow, startSync, pushOnExit, flushSaves } from "$lib/sync";
@@ -27,6 +27,7 @@
 
   function onTabDragStart(e: DragEvent, path: string) {
     dragPath = path;
+    app.treeDrag = null;
     e.dataTransfer?.setData("text/plain", path);
     if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
   }
@@ -69,6 +70,19 @@
   // --- workspace context menu (right-click a tab): removal needs confirm ---
   let wsCtx = $state<{ x: number; y: number; ws: WorkspaceEntry } | null>(null);
 
+  function renameWorkspaceGuarded(ws: WorkspaceEntry) {
+    wsCtx = null;
+    ask("Rename workspace", ws.name, (name) => {
+      const clean = name.replace(/[/\\]/g, "-").trim();
+      if (!clean || clean === ws.name) return;
+      renameWorkspace(ws.path, clean)
+        .then(() => {
+          if (allMode) return showAll();
+        })
+        .catch((e) => toast(errorMessage(e)));
+    });
+  }
+
   async function removeWorkspaceGuarded(ws: WorkspaceEntry) {
     wsCtx = null;
     const ok = await dlgConfirm(
@@ -85,18 +99,24 @@
   async function dropOnWorkspace(e: DragEvent, ws: WorkspaceEntry) {
     const from = e.dataTransfer?.getData("text/pugdock-file") || dragPath;
     wsDrop = null;
+    app.treeDrag = null;
+    dragPath = null;
+    splitHint = false;
+    await moveNoteToWorkspace(from, ws);
+  }
+
+  async function moveNoteToWorkspace(from: string | null, ws: WorkspaceEntry) {
     if (!from || ws.path === app.config?.workspace_path) return;
     try {
       await api.moveToWorkspace(from, ws.path);
       closeEverywhere(from);
       api.removeFromIndex(from).catch(() => {});
       await refreshTree();
+      if (allMode) await showAll();
       toast(`Moved to ${ws.name}`);
     } catch (e) {
       toast(errorMessage(e));
     }
-    dragPath = null;
-    splitHint = false;
   }
 
   // --- All view: every workspace's tree, grouped and labeled ---
@@ -118,18 +138,36 @@
       }
     }
     const trees = await Promise.all(
-      list.map(async (ws) => ({
-        ws,
-        tree: await api.listTreeAt(ws.path).catch(() => []),
-      })),
+      list.map(async (ws) => {
+        let tree = await api.listTreeAt(ws.path).catch(() => []);
+        // Re-root each tree at the sync root so every file op (menu, rename,
+        // move, OS import) works unchanged against the active root; opening
+        // strips the prefix back off.
+        if (rootPath && ws.path !== rootPath && ws.path.startsWith(rootPath + "/")) {
+          tree = prefixTree(tree, ws.path.slice(rootPath.length + 1));
+        }
+        return { ws, tree };
+      }),
     );
     allTrees = trees.filter((t) => t.ws.name !== "No workspace" || t.tree.length > 0);
+  }
+
+  function prefixTree(entries: TreeEntry[], prefix: string): TreeEntry[] {
+    return entries.map((e) => ({
+      ...e,
+      path: `${prefix}/${e.path}`,
+      children: e.children ? prefixTree(e.children, prefix) : null,
+    }));
   }
 
   async function openFromAll(ws: WorkspaceEntry, path: string) {
     // Root ("No workspace") items open without leaving the All view.
     if (ws.name !== "No workspace") allMode = false;
-    if (ws.path !== app.config?.workspace_path) {
+    const root = app.config?.workspace_path ?? "";
+    if (ws.path !== root) {
+      // All-view paths are root-relative; the owning workspace wants them
+      // workspace-relative.
+      if (ws.path.startsWith(root + "/")) path = path.slice(ws.path.length - root.length);
       await switchWorkspace(ws.path).catch((e) => toast(errorMessage(e)));
     }
     await openFile(path).catch((e) => toast(errorMessage(e)));
@@ -296,19 +334,47 @@
     return null;
   }
 
+  function wsTabAt(pos: { x: number; y: number }): WorkspaceEntry | null {
+    const scale = window.devicePixelRatio || 1;
+    for (const [x, y] of [
+      [pos.x / scale, pos.y / scale],
+      [pos.x, pos.y],
+    ]) {
+      const path = document.elementFromPoint(x, y)?.closest("[data-ws-drop]")?.getAttribute("data-ws-drop");
+      const ws = app.config?.workspaces.find((w) => w.path === path);
+      if (ws) return ws;
+    }
+    return null;
+  }
+
   $effect(() => {
     const unlisten = getCurrentWebview().onDragDropEvent(async (event) => {
       if (event.payload.type === "over") {
         app.osDropTarget = dropDirAt(event.payload.position);
+        wsDrop = app.treeDrag ? (wsTabAt(event.payload.position)?.path ?? null) : null;
         return;
       }
       if (event.payload.type === "leave") {
         app.osDropTarget = null;
+        wsDrop = null;
         return;
       }
       if (event.payload.type !== "drop") return;
       const targetDir = dropDirAt(event.payload.position) ?? app.osDropTarget;
       app.osDropTarget = null;
+      wsDrop = null;
+      // No OS paths means an in-app drag: the webview swallows the HTML5
+      // drop, so the move is completed here instead.
+      if (!event.payload.paths.length) {
+        const fromTree = app.treeDrag;
+        const from = fromTree || dragPath;
+        app.treeDrag = null;
+        if (!from) return;
+        const ws = wsTabAt(event.payload.position);
+        if (ws) await moveNoteToWorkspace(from, ws);
+        else if (fromTree && targetDir !== null) await moveFile(from, targetDir);
+        return;
+      }
       let last = "";
       for (const src of event.payload.paths) {
         const name = src.split(/[/\\]/).pop() ?? "file";
@@ -320,6 +386,7 @@
         last = dir || "workspace root";
       }
       await refreshTree();
+      if (allMode) await showAll();
       toast(`Imported into ${last}`);
     });
     return () => void unlisten.then((u) => u());
@@ -384,6 +451,7 @@
           class:wsdrop={wsDrop === ws.path}
           style="--ws-color: {color}"
           role="presentation"
+          data-ws-drop={ws.path}
           oncontextmenu={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -501,9 +569,9 @@
               {#if g.tree.length}
                 <FileTree
                   entries={g.tree}
-                  onmenu={() => {}}
-                  onrename={() => {}}
-                  onmove={() => {}}
+                  onmenu={showMenu}
+                  onrename={(entry) => menuActions.rename(entry)}
+                  onmove={moveFile}
                   onopen={(path) => openFromAll(g.ws, path)}
                 />
               {:else}
@@ -642,6 +710,7 @@
 
 {#if wsCtx}
   <div class="ctx" style="left:{wsCtx.x}px; top:{wsCtx.y}px">
+    <button onclick={() => wsCtx && renameWorkspaceGuarded(wsCtx.ws)}>Rename workspace…</button>
     <button class="danger" onclick={() => wsCtx && removeWorkspaceGuarded(wsCtx.ws)}>Remove workspace…</button>
   </div>
 {/if}

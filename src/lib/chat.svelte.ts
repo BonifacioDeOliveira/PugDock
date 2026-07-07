@@ -190,15 +190,28 @@ export async function askStreaming(q: string, blocks: [string, string][]) {
   const id = String(streamSeq);
   pending = "";
   chat.msgs.push({ role: "ai", text: "", streaming: true });
-  const ctx = blocks.map(([p, t]) => `--- ${p} ---\n${t}`).join("\n\n");
+  // The agent runs at the sync root so it can see every workspace; excerpt
+  // paths (workspace-relative) are prefixed to match its working directory.
+  const root = await api.syncRoot().catch(() => null);
+  const wsPath = app.config?.workspace_path ?? "";
+  const rel = (p: string) => (root && p !== root && p.startsWith(root + "/") ? p.slice(root.length + 1) : "");
+  const prefix = rel(wsPath) ? rel(wsPath) + "/" : "";
+  const wsList = (app.config?.workspaces ?? [])
+    .map((w) => `"${w.name}" (folder: ${rel(w.path) || "."})`)
+    .join(", ");
+  const activeName = app.config?.workspaces.find((w) => w.path === wsPath)?.name ?? "the root";
+  const ctx = blocks.map(([p, t]) => `--- ${prefix}${p} ---\n${t}`).join("\n\n");
   const system =
-    "You are PugDock, the AI agent inside the user's notes workspace. Your working directory IS the workspace: use your file tools (Read, Write, Edit, Glob, Grep) to act, not just talk. " +
-    "Be deeply context-sensitive: use the conversation history, the note currently open in the editor, and the workspace excerpts to resolve references like 'this note', 'that table', 'the same folder'. When the relevant context isn't in the excerpts, Read the files yourself before acting. " +
+    "You are PugDock, the AI agent inside the user's notes. Your working directory is the notes root, which contains every workspace as a top-level folder. " +
+    `Workspaces: ${wsList || "none yet"}. The user is currently in "${activeName}"${prefix ? ` (folder: ${prefix})` : ""}; plain references like 'this folder' or new notes without a stated destination default there. ` +
+    "You have FULL access to all workspaces: answer questions about any of them, move or reference notes across them, and search everywhere with your file tools (Read, Write, Edit, Glob, Grep) - act, not just talk. " +
+    "To create a NEW workspace when asked: create the top-level folder, write an empty file named '.pugdock-workspace' inside it (the app registers it as a workspace), then add whatever notes were requested. " +
+    "Be deeply context-sensitive: use the conversation history, the note currently open in the editor, and the excerpts to resolve references like 'this note', 'that table', 'the same folder'. When the relevant context isn't in the excerpts, Read or Grep the files yourself before acting. " +
     "If a request is ambiguous in a way that would change the outcome (which note or folder, replace vs append, what structure the user wants), ask ONE short clarifying question and stop, instead of guessing. When the request is clear, act directly without asking. " +
     "Write the ENTIRE reply in the user's language, never switching mid-reply, and never narrate tool mechanics ('I need to read the file first', 'let me check') - just act silently and summarize the result at the end. " +
-    "When the user asks you to create a note, folder, table, image reference, or to change content, DO IT with tools (Write/Edit), using workspace-relative paths and Markdown (.md) for notes; then reply with a short summary of what you changed. " +
-    "Never touch files outside the working directory, never edit .chats/ or dotfiles. " +
-    "For pure questions, answer from the provided context and cite the file paths you used; if the answer isn't there, say so. " +
+    "When the user asks you to create a note, folder, table, image reference, or to change content, DO IT with tools (Write/Edit), using paths relative to your working directory and Markdown (.md) for notes; then reply with a short summary of what you changed. " +
+    "Never touch files outside the working directory, never edit .chats/ folders or dotfiles ('.pugdock-workspace' is the one exception). " +
+    "For pure questions, answer from the provided context and cite the file paths you used; if the answer isn't there, look for it with your tools before saying so. " +
     "The excerpt marked 'currently open in the editor' is the note the user is looking at right now; treat it as the primary context. " +
     "Always reply in the same language the user writes in.";
   const prompt = `${historyBlock()}Workspace excerpts:\n\n${ctx.slice(0, 90000)}\n\nUser request: ${q}`;
@@ -211,7 +224,10 @@ export async function askStreaming(q: string, blocks: [string, string][]) {
       last.sources = sources;
     }
     chat.activity = null;
-    // the agent may have created or edited files: refresh the visible world
+    // the agent may have created or edited files (or marked new workspaces):
+    // refresh the visible world
+    const cfg = await api.adoptWorkspaces().catch(() => null);
+    if (cfg) app.config = cfg;
     refreshTree().catch(() => {});
     refreshOpenTabs().catch(() => {});
   } catch (e) {

@@ -433,6 +433,38 @@ pub fn move_workspace(app: tauri::AppHandle, new_path: String) -> Result<AppConf
     load_config(&app)
 }
 
+/// Rename a workspace: the folder moves under the same parent and the
+/// config entry (and active path, if it was active) is repointed.
+#[tauri::command]
+pub fn rename_workspace(app: tauri::AppHandle, path: String, new_name: String) -> Result<AppConfig> {
+    if new_name.is_empty() || new_name.contains('/') || new_name.contains('\\') {
+        return Err(AppError::Other("Invalid workspace name.".into()));
+    }
+    let mut cfg = load_config(&app)?;
+    let old_p = PathBuf::from(&path);
+    let parent = old_p
+        .parent()
+        .ok_or_else(|| AppError::Other("Workspace has no parent folder.".into()))?;
+    let new_p = parent.join(&new_name);
+    if new_p == old_p {
+        return load_config(&app);
+    }
+    if new_p.exists() {
+        return Err(AppError::Other(format!("\"{new_name}\" already exists.")));
+    }
+    fs::rename(&old_p, &new_p)?;
+    let new_path = new_p.to_string_lossy().into_owned();
+    if let Some(entry) = cfg.workspaces.iter_mut().find(|w| w.path == path) {
+        entry.path = new_path.clone();
+        entry.name = new_name;
+    }
+    if cfg.workspace_path.as_deref() == Some(path.as_str()) {
+        cfg.workspace_path = Some(new_path);
+    }
+    save_config(&app, &cfg)?;
+    load_config(&app)
+}
+
 /// Remove a workspace tab from the list - never deletes any files.
 #[tauri::command]
 pub fn remove_workspace(app: tauri::AppHandle, path: String) -> Result<AppConfig> {
@@ -448,6 +480,40 @@ pub fn remove_workspace(app: tauri::AppHandle, path: String) -> Result<AppConfig
         }
     }
     save_config(&app, &cfg)?;
+    load_config(&app)
+}
+
+/// Register any folder the AI agent marked as a new workspace (an empty
+/// `.pugdock-workspace` file at its root), removing the marker.
+#[tauri::command]
+pub fn adopt_workspaces(app: tauri::AppHandle) -> Result<AppConfig> {
+    let mut cfg = load_config(&app)?;
+    let Some(root) = sync_root(&cfg) else { return load_config(&app) };
+    let mut changed = false;
+    for entry in fs::read_dir(&root)?.flatten() {
+        let p = entry.path();
+        if !p.is_dir() {
+            continue;
+        }
+        let marker = p.join(".pugdock-workspace");
+        if !marker.exists() {
+            continue;
+        }
+        let _ = fs::remove_file(&marker);
+        let path = p.to_string_lossy().into_owned();
+        if cfg.workspaces.iter().any(|w| w.path == path) {
+            continue;
+        }
+        let name = p
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "Workspace".into());
+        cfg.workspaces.push(WorkspaceEntry { path, name, repo_owner: None, repo_name: None, managed: true });
+        changed = true;
+    }
+    if changed {
+        save_config(&app, &cfg)?;
+    }
     load_config(&app)
 }
 

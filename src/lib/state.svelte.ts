@@ -82,6 +82,9 @@ export const app = $state({
   selectedDir: "" as string,
   /** Folder currently hovered by an external (OS) file drag. */
   osDropTarget: null as string | null,
+  /** Tree entry being dragged. macOS webviews swallow HTML5 drops, so the
+   *  Tauri drag-drop event routes internal moves using this. */
+  treeDrag: null as string | null,
   syncState: "synced" as SyncUiState,
   pendingChanges: 0,
   conflicts: [] as string[],

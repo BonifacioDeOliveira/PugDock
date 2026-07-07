@@ -197,9 +197,14 @@ pub async fn anthropic_run_stream(
 
     let claude = claude_code_path().ok_or(AppError::AiNotConnected)?;
     let mut cmd = tokio::process::Command::new(claude);
-    // Agent mode: the chat runs inside the workspace with file tools enabled,
-    // so it can create folders/notes, edit content, and organize for real.
-    if let Ok(root) = crate::workspace::workspace_root(&app) {
+    // Agent mode: the chat runs at the sync root (all workspaces visible)
+    // with file tools enabled, so it can read, create and organize notes
+    // across every workspace, not just the active one.
+    let root = crate::workspace::load_config(&app)
+        .ok()
+        .and_then(|cfg| crate::workspace::sync_root(&cfg))
+        .or_else(|| crate::workspace::workspace_root(&app).ok());
+    if let Some(root) = root {
         cmd.current_dir(root);
     }
     cmd.args([
