@@ -45,7 +45,18 @@ pub struct SyncStatus {
 
 async fn status(root: &Path) -> Result<SyncStatus> {
     let out = run_git(root, &["status", "--porcelain=v2", "--branch"]).await?;
-    let mut s = SyncStatus { dirty: false, ahead: 0, behind: 0, conflicts: vec![], merging: root.join(".git/MERGE_HEAD").exists() };
+    // cwd's own path inside the repo ("" at the root, "test2/Dev/" in a
+    // sub-workspace): conflict paths get translated to workspace-relative.
+    let prefix = run_git(root, &["rev-parse", "--show-prefix"]).await.unwrap_or_default().trim().to_string();
+    let merging = run_git(root, &["rev-parse", "--git-path", "MERGE_HEAD"])
+        .await
+        .map(|p| {
+            let p = p.trim();
+            let pb = Path::new(p);
+            if pb.is_absolute() { pb.exists() } else { root.join(p).exists() }
+        })
+        .unwrap_or(false);
+    let mut s = SyncStatus { dirty: false, ahead: 0, behind: 0, conflicts: vec![], merging };
     for line in out.lines() {
         if let Some(ab) = line.strip_prefix("# branch.ab ") {
             for part in ab.split(' ') {
@@ -53,8 +64,11 @@ async fn status(root: &Path) -> Result<SyncStatus> {
                 if let Some(n) = part.strip_prefix('-') { s.behind = n.parse().unwrap_or(0); }
             }
         } else if line.starts_with('u') {
-            // unmerged entry: last field is the path
-            if let Some(p) = line.split(' ').nth(10) { s.conflicts.push(p.to_string()); }
+            // unmerged entry: last field is the path (repo-root-relative)
+            if let Some(p) = line.split(' ').nth(10) {
+                let ws_rel = p.strip_prefix(&prefix).unwrap_or(p);
+                s.conflicts.push(ws_rel.to_string());
+            }
         } else if line.starts_with('1') || line.starts_with('2') || line.starts_with('?') {
             s.dirty = true;
         }
@@ -187,8 +201,8 @@ pub async fn git_resolve_conflict(app: tauri::AppHandle, path: String, keep: Str
 #[tauri::command]
 pub async fn git_conflict_versions(app: tauri::AppHandle, path: String) -> Result<(String, String)> {
     let root = workspace::workspace_root(&app)?;
-    let local = run_git(&root, &["show", &format!(":2:{path}")]).await.unwrap_or_default();
-    let remote = run_git(&root, &["show", &format!(":3:{path}")]).await.unwrap_or_default();
+    let local = run_git(&root, &["show", &format!(":2:./{path}")]).await.unwrap_or_default();
+    let remote = run_git(&root, &["show", &format!(":3:./{path}")]).await.unwrap_or_default();
     Ok((local, remote))
 }
 
@@ -310,5 +324,5 @@ pub async fn set_sync_excluded(app: tauri::AppHandle, path: String, excluded: bo
 #[tauri::command]
 pub async fn git_file_at(app: tauri::AppHandle, hash: String, path: String) -> Result<String> {
     let root = workspace::workspace_root(&app)?;
-    run_git(&root, &["show", &format!("{hash}:{path}")]).await
+    run_git(&root, &["show", &format!("{hash}:./{path}")]).await
 }

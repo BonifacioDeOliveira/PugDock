@@ -81,14 +81,25 @@ impl AppConfig {
     }
 }
 
-/// The sync root: the topmost managed workspace (where .git and the
-/// remote live). Every other workspace is a folder inside it.
+/// The sync root: where .git and the remote live. Found by walking up from
+/// the topmost workspace to the OUTERMOST ancestor containing .git, so the
+/// root itself does not need to be a workspace tab.
 pub fn sync_root(cfg: &AppConfig) -> Option<PathBuf> {
-    cfg.workspaces
+    let start = cfg
+        .workspaces
         .iter()
         .filter(|w| w.managed)
         .map(|w| PathBuf::from(&w.path))
-        .min_by_key(|p| p.components().count())
+        .min_by_key(|p| p.components().count())?;
+    let mut found: Option<PathBuf> = None;
+    let mut cur: Option<&Path> = Some(start.as_path());
+    while let Some(p) = cur {
+        if p.join(".git").exists() {
+            found = Some(p.to_path_buf());
+        }
+        cur = p.parent();
+    }
+    Some(found.unwrap_or(start))
 }
 
 const REGISTRY: &str = ".pugdock-workspaces.json";
@@ -125,7 +136,7 @@ fn merge_registry(cfg: &mut AppConfig) {
         .iter()
         .find(|w| Path::new(&w.path) == root)
         .map(|w| (w.repo_owner.clone(), w.repo_name.clone()))
-        .unwrap_or((None, None));
+        .unwrap_or((cfg.repo_owner.clone(), cfg.repo_name.clone()));
     for e in entries {
         let Some(rel) = e["path"].as_str() else { continue };
         let abs = if rel.is_empty() { root.clone() } else { root.join(rel) };
