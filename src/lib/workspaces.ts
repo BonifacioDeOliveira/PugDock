@@ -41,18 +41,17 @@ export async function switchWorkspace(path: string) {
   await activate(path);
 }
 
-/** The sync root: the TOPMOST managed workspace, where .git and the
- *  remote live. New workspaces and GitHub linking always target it. */
-export function repoRoot(): string | null {
-  const managed = (app.config?.workspaces ?? []).filter((w) => w.managed);
-  if (!managed.length) return app.config?.workspace_path ?? null;
-  return managed.reduce((a, b) => (a.path.split("/").length <= b.path.split("/").length ? a : b)).path;
+/** The sync root: where .git and the remote live, resolved by the backend
+ *  (outermost .git ancestor). New workspaces and GitHub linking target it. */
+export async function repoRoot(): Promise<string | null> {
+  const root = await api.syncRoot().catch(() => null);
+  return root ?? app.config?.workspace_path ?? null;
 }
 
 /** Create a named workspace inside the synced repo root. No location to
  *  pick and no git of its own: the root repository syncs everything. */
 export async function addWorkspace(name: string) {
-  const root = repoRoot();
+  const root = await repoRoot();
   if (!root) throw new Error("No workspace root yet.");
   const path = `${root}/${name}`;
   await flushSaves().catch(() => {});

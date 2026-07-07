@@ -262,7 +262,10 @@ pub fn scaffold(path: &Path) -> Result<()> {
     // Only hidden internals are prepared here.
     fs::create_dir_all(path)?;
     fs::create_dir_all(path.join(".pugdock/cache"))?;
-    if !path.join(".gitignore").exists() {
+    // The sync root's .gitignore covers every workspace under it; only the
+    // repository root gets one, never sub-workspaces.
+    let inside_repo = path.ancestors().skip(1).any(|a| a.join(".git").exists());
+    if !inside_repo && !path.join(".gitignore").exists() {
         fs::write(path.join(".gitignore"), GITIGNORE)?;
     }
     Ok(())
@@ -344,6 +347,20 @@ fn set_active(cfg: &mut AppConfig, path: &str) {
         cfg.workspace_path = Some(entry.path.clone());
         cfg.repo_owner = entry.repo_owner.clone();
         cfg.repo_name = entry.repo_name.clone();
+        // Sync is a property of the shared root, not of one tab: a managed
+        // workspace without repo fields inherits them from any sibling so
+        // checkpoints keep running on freshly created workspaces.
+        if entry.managed && cfg.repo_name.is_none() {
+            if let Some((o, n)) = cfg
+                .workspaces
+                .iter()
+                .filter(|w| w.managed)
+                .find_map(|w| w.repo_owner.clone().zip(w.repo_name.clone()))
+            {
+                cfg.repo_owner = Some(o);
+                cfg.repo_name = Some(n);
+            }
+        }
     }
 }
 

@@ -138,12 +138,9 @@
 
   async function defaultFolder() {
     try {
-      // When reconnecting GitHub, always link the SYNC ROOT (topmost
-      // workspace), never a sub-workspace: the whole tree syncs as one.
-      const managed = (app.config?.workspaces ?? []).filter((w) => w.managed);
-      const root = managed.length
-        ? managed.reduce((a, b) => (a.path.split("/").length <= b.path.split("/").length ? a : b)).path
-        : null;
+      // When reconnecting GitHub, always link the SYNC ROOT, never a
+      // sub-workspace: the whole tree syncs as one.
+      const root = await api.syncRoot().catch(() => null);
       folder = root ?? app.config?.workspace_path ?? (await join(await documentDir(), "PugDock"));
       await inspect();
     } catch {
